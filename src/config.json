@@ -1,0 +1,47 @@
+{
+  "chrome_profile_path": null,
+  "chromedriver_path": "C:/Program Files/Google/Chrome/Application/chrome.exe",
+  "sessions": [
+    {
+      "id": 1,
+      "name": "Movies & Entertainment",
+      "icon": "\ud83c\udfac",
+      "tabs": [
+        {
+          "url": "https://netflix.com",
+          "type": "url"
+        },
+        {
+          "url": "https://primevideo.com",
+          "type": "url"
+        },
+        {
+          "url": "https://mubi.com",
+          "type": "url"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "FraH Production",
+      "icon": "\ud83c\udfa5",
+      "tabs": [
+        {
+          "channelHandle": "@frah_production7608",
+          "type": "youtube"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "FraH Music",
+      "icon": "\ud83c\udfb5",
+      "tabs": [
+        {
+          "channelHandle": "@FraH_Music-m9m",
+          "type": "youtube"
+        }
+      ]
+    }
+  ]
+}

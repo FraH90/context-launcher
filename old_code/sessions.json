@@ -1,0 +1,28 @@
+{
+  "sessions": [
+    {
+      "name": "Relax Mode",
+      "profile": "Profile 1",
+      "tabs": [
+        "https://www.netflix.com",
+        "https://www.primevideo.com",
+        "https://mubi.com"
+      ]
+    },
+    {
+      "name": "YouTube Channel 1",
+      "profile": "Profile 2",
+      "tabs": [
+        "https://studio.youtube.com/channel/CHANNEL_ID_1"
+      ]
+    },
+    {
+      "name": "Study Mode",
+      "profile": "Profile 1",
+      "tabs": [
+        "https://scholar.google.com",
+        "https://www.wikipedia.org"
+      ]
+    }
+  ]
+}
