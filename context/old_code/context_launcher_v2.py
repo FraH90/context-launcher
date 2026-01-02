@@ -1,4 +1,4 @@
-# Chrome Session Launcher - Simple UI
+ # Chrome Session Launcher - Simple UI
 # Save as: chrome_launcher.py
 
 import sys
