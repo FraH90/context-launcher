@@ -29,6 +29,7 @@ class ConfigManager:
         self.app_settings_path = self.config_dir / "app_settings.json"
         self.user_prefs_path = self.config_dir / "user_preferences.json"
         self.categories_path = self.data_dir / "categories.json"
+        self.tabs_path = self.data_dir / "tabs.json"  # New: user-defined tabs
 
         self.sessions_dir = self.data_dir / "sessions"
         self.workflows_dir = self.data_dir / "workflows"
@@ -216,6 +217,77 @@ class ConfigManager:
         if session_path.exists():
             session_path.unlink()
 
+    def list_workflows(self) -> List[Path]:
+        """List all workflow files.
+
+        Returns:
+            List of workflow file paths
+        """
+        return list(self.workflows_dir.glob('*.json'))
+
+    def load_workflow(self, workflow_id: str) -> Optional[Dict[str, Any]]:
+        """Load a workflow by ID.
+
+        Args:
+            workflow_id: Workflow ID
+
+        Returns:
+            Workflow dictionary or None if not found
+        """
+        workflow_path = self.workflows_dir / f"{workflow_id}.json"
+
+        if not workflow_path.exists():
+            return None
+
+        with open(workflow_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+    def save_workflow(self, workflow_id: str, workflow_data: Dict[str, Any]):
+        """Save a workflow.
+
+        Args:
+            workflow_id: Workflow ID
+            workflow_data: Workflow data dictionary
+        """
+        workflow_path = self.workflows_dir / f"{workflow_id}.json"
+
+        with open(workflow_path, 'w', encoding='utf-8') as f:
+            json.dump(workflow_data, f, indent=2, ensure_ascii=False)
+
+    def delete_workflow(self, workflow_id: str):
+        """Delete a workflow.
+
+        Args:
+            workflow_id: Workflow ID to delete
+        """
+        workflow_path = self.workflows_dir / f"{workflow_id}.json"
+
+        if workflow_path.exists():
+            workflow_path.unlink()
+
+    def load_tabs(self) -> Dict[str, Any]:
+        """Load user-defined tabs.
+
+        Returns:
+            Tabs dictionary
+        """
+        if not self.tabs_path.exists():
+            tabs = self._create_default_tabs()
+            self.save_tabs(tabs)
+            return tabs
+
+        with open(self.tabs_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+    def save_tabs(self, tabs_data: Dict[str, Any]):
+        """Save user-defined tabs.
+
+        Args:
+            tabs_data: Tabs data dictionary
+        """
+        with open(self.tabs_path, 'w', encoding='utf-8') as f:
+            json.dump(tabs_data, f, indent=2, ensure_ascii=False)
+
     def _create_default_app_settings(self) -> Dict[str, Any]:
         """Create default application settings.
 
@@ -289,3 +361,36 @@ class ConfigManager:
                 }
             ]
         }
+
+    def _create_default_tabs(self) -> Dict[str, Any]:
+        """Create default tabs from template file.
+
+        Returns:
+            Default tabs dictionary
+        """
+        template_path = Path(__file__).parent.parent / "templates" / "default_tabs.json"
+
+        if template_path.exists():
+            with open(template_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        else:
+            # Fallback to hardcoded defaults if template not found
+            from .tab import create_default_tabs
+            tabs_collection = create_default_tabs()
+            return tabs_collection.to_dict()
+
+    def load_default_sessions_template(self) -> List[Dict[str, Any]]:
+        """Load default sessions from template file.
+
+        Returns:
+            List of session dictionaries
+        """
+        template_path = Path(__file__).parent.parent / "templates" / "default_sessions.json"
+
+        if template_path.exists():
+            with open(template_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get('sessions', [])
+        else:
+            # Return empty list if no template
+            return []

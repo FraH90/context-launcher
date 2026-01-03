@@ -5,6 +5,8 @@ from .base import BaseLauncher, LaunchConfig
 from .browsers.chrome import ChromeLauncher
 from .browsers.firefox import FirefoxLauncher
 from .browsers.edge import EdgeLauncher
+from .editors.vscode import VSCodeLauncher
+from .apps.generic import GenericAppLauncher, SlackLauncher, SpotifyLauncher
 
 
 class LauncherFactory:
@@ -12,14 +14,16 @@ class LauncherFactory:
 
     # Registry of available launchers
     _registry: Dict[str, Type[BaseLauncher]] = {
+        # Browsers
         'chrome': ChromeLauncher,
         'firefox': FirefoxLauncher,
         'edge': EdgeLauncher,
-        # More launchers will be added in Phase 2:
-        # 'vscode': VSCodeLauncher,
-        # 'pycharm': PyCharmLauncher,
-        # 'slack': SlackLauncher,
-        # 'generic': GenericAppLauncher,
+        # Editors
+        'vscode': VSCodeLauncher,
+        # Apps
+        'slack': SlackLauncher,
+        'spotify': SpotifyLauncher,
+        'generic': GenericAppLauncher,
     }
 
     @classmethod

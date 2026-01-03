@@ -56,6 +56,7 @@ class Session(BaseModel):
     name: str
     icon: str = "🌐"
     description: str = ""
+    tab_id: str = "uncategorized"  # References the tab this session belongs to
     type: SessionType = SessionType.SINGLE_APP
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
@@ -89,6 +90,8 @@ class WorkflowStep(BaseModel):
     delay_ms: int = 0
     session_ref: Optional[str] = None  # Reference to existing session ID
     inline_config: Optional[LaunchConfiguration] = None  # Or inline launch config
+    continue_on_failure: bool = True  # Whether to continue if this step fails
+    description: str = ""  # Optional description of what this step does
 
 
 class Workflow(BaseModel):
@@ -98,6 +101,7 @@ class Workflow(BaseModel):
     name: str
     icon: str = "🎯"
     description: str = ""
+    tab_id: str = "uncategorized"  # References the tab this workflow belongs to
     type: SessionType = SessionType.COMPOSITE_WORKFLOW
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
@@ -118,6 +122,12 @@ class Workflow(BaseModel):
         """Create Workflow from dictionary."""
         return cls.model_validate(data)
 
+    def update_launch_stats(self):
+        """Update launch statistics."""
+        self.metadata.launch_count += 1
+        self.metadata.last_launched = datetime.now()
+        self.updated_at = datetime.now()
+
 
 # Helper functions for creating sessions
 
@@ -127,7 +137,7 @@ def create_browser_session(
     tabs: List[Dict[str, Any]],
     icon: str = "🌐",
     profile: str = "",
-    category_id: str = "uncategorized"
+    tab_id: str = "uncategorized"
 ) -> Session:
     """Helper to create a browser session.
 
@@ -137,7 +147,7 @@ def create_browser_session(
         tabs: List of tab dictionaries with 'type' and 'url'
         icon: Session icon (emoji)
         profile: Browser profile name
-        category_id: Category ID
+        tab_id: Tab ID this session belongs to
 
     Returns:
         Session instance
@@ -146,7 +156,8 @@ def create_browser_session(
         name=name,
         icon=icon,
         description=f"{browser.capitalize()} session with {len(tabs)} tab(s)",
-        metadata=SessionMetadata(category_id=category_id),
+        tab_id=tab_id,
+        metadata=SessionMetadata(category_id=tab_id),  # Keep for backward compatibility
         launch_config=LaunchConfiguration(
             app_type="browser",
             app_name=browser,
@@ -163,7 +174,7 @@ def create_vscode_session(
     name: str,
     workspace_path: str,
     icon: str = "💻",
-    category_id: str = "uncategorized"
+    tab_id: str = "uncategorized"
 ) -> Session:
     """Helper to create a VS Code session.
 
@@ -171,7 +182,7 @@ def create_vscode_session(
         name: Session name
         workspace_path: Path to workspace or folder
         icon: Session icon
-        category_id: Category ID
+        tab_id: Tab ID this session belongs to
 
     Returns:
         Session instance
@@ -180,12 +191,51 @@ def create_vscode_session(
         name=name,
         icon=icon,
         description=f"VS Code workspace: {workspace_path}",
-        metadata=SessionMetadata(category_id=category_id),
+        tab_id=tab_id,
+        metadata=SessionMetadata(category_id=tab_id),
         launch_config=LaunchConfiguration(
             app_type="editor",
             app_name="vscode",
             parameters={
                 "workspace": workspace_path
+            }
+        )
+    )
+
+
+def create_generic_app_session(
+    name: str,
+    app_name: str,
+    executable_path: str,
+    arguments: Optional[List[str]] = None,
+    icon: str = "⚙️",
+    tab_id: str = "uncategorized"
+) -> Session:
+    """Helper to create a generic application session.
+
+    Args:
+        name: Session name
+        app_name: Application identifier (for factory)
+        executable_path: Path to executable
+        arguments: Optional command-line arguments
+        icon: Session icon
+        tab_id: Tab ID this session belongs to
+
+    Returns:
+        Session instance
+    """
+    return Session(
+        name=name,
+        icon=icon,
+        description=f"Launch {name}",
+        tab_id=tab_id,
+        metadata=SessionMetadata(category_id=tab_id),
+        launch_config=LaunchConfiguration(
+            app_type="generic",
+            app_name=app_name,
+            parameters={
+                "executable_path": executable_path,
+                "arguments": arguments or []
             }
         )
     )

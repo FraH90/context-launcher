@@ -1,0 +1,29 @@
+{
+  "version": "3.0",
+  "tabs": [
+    {
+      "id": "work",
+      "name": "Work",
+      "icon": "💼",
+      "order": 0
+    },
+    {
+      "id": "entertainment",
+      "name": "Entertainment",
+      "icon": "🎮",
+      "order": 1
+    },
+    {
+      "id": "personal",
+      "name": "Personal",
+      "icon": "🧠",
+      "order": 2
+    },
+    {
+      "id": "uncategorized",
+      "name": "Uncategorized",
+      "icon": "📁",
+      "order": 999
+    }
+  ]
+}

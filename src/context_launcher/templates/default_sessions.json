@@ -1,0 +1,37 @@
+{
+  "version": "3.0",
+  "sessions": [
+    {
+      "name": "Example Browser Session",
+      "icon": "🌐",
+      "description": "Chrome session with 2 tab(s)",
+      "tab_id": "work",
+      "type": "single_app",
+      "metadata": {
+        "category_id": "work",
+        "tags": [],
+        "favorite": false,
+        "launch_count": 0,
+        "last_launched": null
+      },
+      "launch_config": {
+        "app_type": "browser",
+        "app_name": "chrome",
+        "parameters": {
+          "tabs": [
+            {
+              "type": "url",
+              "url": "https://www.google.com"
+            },
+            {
+              "type": "url",
+              "url": "https://www.github.com"
+            }
+          ],
+          "profile": "",
+          "use_selenium": false
+        }
+      }
+    }
+  ]
+}
