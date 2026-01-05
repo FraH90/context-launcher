@@ -332,7 +332,8 @@ class ConfigManager:
                 "window_width": 600,
                 "window_height": 700,
                 "show_favorites": True,
-                "default_category_expanded": True
+                "default_category_expanded": True,
+                "view_mode": "tree"  # "tree" or "tabs"
             },
             "behavior": {
                 "confirm_delete": True,

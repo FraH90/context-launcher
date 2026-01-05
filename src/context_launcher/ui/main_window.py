@@ -3,7 +3,8 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QMessageBox, QLabel, QLineEdit,
-    QTreeWidget, QTreeWidgetItem, QMenu
+    QTreeWidgetItem, QMenu, QTabWidget,
+    QListWidget, QListWidgetItem, QStackedWidget
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QColor, QBrush, QAction
@@ -19,6 +20,7 @@ from ..utils.logger import get_logger
 from .session_dialog import SessionDialog
 from .workflow_dialog import WorkflowDialog
 from .category_dialog import CategoryDialog
+from .tree_widget import SmartTreeWidget
 
 
 class MainWindow(QMainWindow):
@@ -35,14 +37,19 @@ class MainWindow(QMainWindow):
         self.tabs_collection: TabsCollection = None
         self.workflow_executor = WorkflowExecutor(self.config_manager)
 
-        # Tree widget for hierarchical category view
-        self.tree_widget: QTreeWidget = None
+        # View mode widgets
+        self.view_stack: QStackedWidget = None
+        self.tree_widget: SmartTreeWidget = None
+        self.tab_widget: QTabWidget = None
+        self.tab_list_widgets: Dict[str, QListWidget] = {}  # Map tab_id -> QListWidget
         self.search_text = ""
+        self.current_view_mode = "tree"  # Default to tree view
 
         self.setWindowTitle("Context Launcher v3.0")
         self.setGeometry(100, 100, 700, 750)
 
         self._init_ui()
+        self._load_user_preferences()
         self._load_tabs()
         self._load_sessions()
         self._load_workflows()
@@ -67,6 +74,11 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(title_label)
 
         header_layout.addStretch()
+
+        # View mode toggle button
+        self.toggle_view_btn = QPushButton("🔄 Switch to Tab View")
+        self.toggle_view_btn.clicked.connect(self._toggle_view_mode)
+        header_layout.addWidget(self.toggle_view_btn)
 
         self.new_category_btn = QPushButton("+ Category")
         self.new_category_btn.clicked.connect(self._on_new_category_clicked)
@@ -98,8 +110,15 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(search_layout)
 
-        # Tree widget for hierarchical categories
-        self.tree_widget = QTreeWidget()
+        # Stacked widget to switch between Tree and Tab views
+        self.view_stack = QStackedWidget()
+
+        # Create Tree View (index 0)
+        tree_container = QWidget()
+        tree_layout = QVBoxLayout(tree_container)
+        tree_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.tree_widget = SmartTreeWidget()
         self.tree_widget.setHeaderLabel("Categories & Sessions")
         self.tree_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree_widget.customContextMenuRequested.connect(self._show_context_menu)
@@ -107,14 +126,23 @@ class MainWindow(QMainWindow):
         self.tree_widget.itemSelectionChanged.connect(self._update_button_states)
         self.tree_widget.itemExpanded.connect(self._on_item_expanded)
         self.tree_widget.itemCollapsed.connect(self._on_item_collapsed)
+        self.tree_widget.item_dropped.connect(self._on_tree_item_dropped)
 
-        # Enable drag and drop
+        # Enable drag and drop with smart validation
         self.tree_widget.setDragEnabled(True)
         self.tree_widget.setAcceptDrops(True)
         self.tree_widget.setDropIndicatorShown(True)
-        self.tree_widget.setDragDropMode(QTreeWidget.DragDropMode.InternalMove)
+        self.tree_widget.setDragDropMode(SmartTreeWidget.DragDropMode.InternalMove)
 
-        layout.addWidget(self.tree_widget)
+        tree_layout.addWidget(self.tree_widget)
+        self.view_stack.addWidget(tree_container)
+
+        # Create Tab View (index 1)
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setTabsClosable(False)  # Don't allow closing tabs in this mode
+        self.view_stack.addWidget(self.tab_widget)
+
+        layout.addWidget(self.view_stack)
 
         # Action buttons
         button_layout = QHBoxLayout()
@@ -143,19 +171,22 @@ class MainWindow(QMainWindow):
         """Load user-defined tabs/categories from JSON."""
         tabs_data = self.config_manager.load_tabs()
         self.tabs_collection = TabsCollection.from_dict(tabs_data)
-        self._refresh_tree()
+
+        # Set initial view mode based on preferences
+        if self.current_view_mode == "tree":
+            self._switch_to_tree_view()
+        else:
+            self._switch_to_tab_view()
 
     def _update_button_states(self):
         """Update button enabled states based on selection."""
-        current_item = self.tree_widget.currentItem()
-        if not current_item:
+        item_obj, item_type = self._get_current_item()
+
+        if not item_obj:
             self.launch_btn.setEnabled(False)
             self.edit_btn.setEnabled(False)
             self.delete_btn.setEnabled(False)
             return
-
-        # Check if it's a session/workflow (has data) or just a category
-        item_type = current_item.data(0, Qt.ItemDataRole.UserRole + 1)
 
         # Can launch sessions and workflows
         self.launch_btn.setEnabled(item_type in ['session', 'workflow'])
@@ -386,6 +417,37 @@ class MainWindow(QMainWindow):
             self.tabs_collection.update_expanded_state(category_id, False)
             self.config_manager.save_tabs(self.tabs_collection.to_dict())
 
+    def _on_tree_item_dropped(self, source_item: QTreeWidgetItem, target_item: QTreeWidgetItem,
+                              source_type: str, target_type: str):
+        """Handle item dropped in tree - update data model.
+
+        Args:
+            source_item: Item that was dropped
+            target_item: Item it was dropped onto
+            source_type: Type of source ('category', 'session', 'workflow')
+            target_type: Type of target
+        """
+        source_obj = source_item.data(0, Qt.ItemDataRole.UserRole)
+        target_obj = target_item.data(0, Qt.ItemDataRole.UserRole)
+
+        if source_type == 'category' and target_type == 'category':
+            # Moving category to be child of another category
+            source_obj.parent_id = target_obj.id
+            self.config_manager.save_tabs(self.tabs_collection.to_dict())
+            self.logger.info(f"Moved category '{source_obj.name}' under '{target_obj.name}'")
+
+        elif source_type == 'session' and target_type == 'category':
+            # Moving session to a category
+            source_obj.tab_id = target_obj.id
+            self.config_manager.save_session(source_obj.id, source_obj.to_dict())
+            self.logger.info(f"Moved session '{source_obj.name}' to category '{target_obj.name}'")
+
+        elif source_type == 'workflow' and target_type == 'category':
+            # Moving workflow to a category
+            source_obj.tab_id = target_obj.id
+            self.config_manager.save_workflow(source_obj.id, source_obj.to_dict())
+            self.logger.info(f"Moved workflow '{source_obj.name}' to category '{target_obj.name}'")
+
     def _on_search_text_changed(self, text: str):
         """Handle search text change.
 
@@ -511,13 +573,11 @@ class MainWindow(QMainWindow):
 
     def _on_launch_clicked(self):
         """Handle launch button click."""
-        current_item = self.tree_widget.currentItem()
-        if not current_item:
+        item_obj, item_type = self._get_current_item()
+
+        if not item_obj:
             QMessageBox.warning(self, "No Selection", "Please select a session or workflow to launch.")
             return
-
-        item_obj = current_item.data(0, Qt.ItemDataRole.UserRole)
-        item_type = current_item.data(0, Qt.ItemDataRole.UserRole + 1)
 
         if item_type == 'session':
             self._launch_session(item_obj)
@@ -667,13 +727,11 @@ class MainWindow(QMainWindow):
 
     def _on_edit_clicked(self):
         """Handle edit button click."""
-        current_item = self.tree_widget.currentItem()
-        if not current_item:
+        item_obj, item_type = self._get_current_item()
+
+        if not item_obj:
             QMessageBox.warning(self, "No Selection", "Please select something to edit.")
             return
-
-        item_obj = current_item.data(0, Qt.ItemDataRole.UserRole)
-        item_type = current_item.data(0, Qt.ItemDataRole.UserRole + 1)
 
         if item_type == 'category':
             # Edit category
@@ -714,13 +772,11 @@ class MainWindow(QMainWindow):
 
     def _on_delete_clicked(self):
         """Handle delete button click."""
-        current_item = self.tree_widget.currentItem()
-        if not current_item:
+        item_obj, item_type = self._get_current_item()
+
+        if not item_obj:
             QMessageBox.warning(self, "No Selection", "Please select something to delete.")
             return
-
-        item_obj = current_item.data(0, Qt.ItemDataRole.UserRole)
-        item_type = current_item.data(0, Qt.ItemDataRole.UserRole + 1)
 
         # Confirm deletion
         item_name = item_obj.name
@@ -810,3 +866,203 @@ class MainWindow(QMainWindow):
             self.config_manager.save_session(session.id, session.to_dict())
 
             self.logger.info(f"Created default session: {session.name}")
+
+    def _load_user_preferences(self):
+        """Load user preferences and apply view mode."""
+        prefs = self.config_manager.load_user_preferences()
+        view_mode = prefs.get('ui', {}).get('view_mode', 'tree')
+        self.current_view_mode = view_mode
+
+    def _reload_sessions_and_workflows(self):
+        """Reload sessions and workflows from disk to pick up any changes."""
+        # Reload sessions
+        self.sessions.clear()
+        session_files = self.config_manager.list_sessions()
+        for session_file in session_files:
+            try:
+                session_data = self.config_manager.load_session(session_file.stem)
+                session = Session.from_dict(session_data)
+                self.sessions.append(session)
+            except Exception as e:
+                self.logger.error(f"Failed to load session {session_file}: {e}")
+
+        # Reload workflows
+        self.workflows.clear()
+        workflow_files = self.config_manager.list_workflows()
+        for workflow_file in workflow_files:
+            try:
+                workflow_data = self.config_manager.load_workflow(workflow_file.stem)
+                workflow = Workflow.from_dict(workflow_data)
+                self.workflows.append(workflow)
+            except Exception as e:
+                self.logger.error(f"Failed to load workflow {workflow_file}: {e}")
+
+    def _toggle_view_mode(self):
+        """Toggle between tree and tab view modes."""
+        if self.current_view_mode == "tree":
+            self._switch_to_tab_view()
+        else:
+            self._switch_to_tree_view()
+
+    def _switch_to_tree_view(self):
+        """Switch to tree view mode."""
+        self.current_view_mode = "tree"
+        self.view_stack.setCurrentIndex(0)
+        self.toggle_view_btn.setText("🔄 Switch to Tab View")
+        self.new_category_btn.setText("+ Category")
+
+        # Save preference
+        prefs = self.config_manager.load_user_preferences()
+        prefs['ui']['view_mode'] = 'tree'
+        self.config_manager.save_user_preferences(prefs)
+
+        self._refresh_tree()
+        self._update_button_states()
+
+    def _switch_to_tab_view(self):
+        """Switch to tab view mode."""
+        self.current_view_mode = "tabs"
+        self.view_stack.setCurrentIndex(1)
+        self.toggle_view_btn.setText("🔄 Switch to Tree View")
+        self.new_category_btn.setText("+ Tab")
+
+        # Save preference
+        prefs = self.config_manager.load_user_preferences()
+        prefs['ui']['view_mode'] = 'tabs'
+        self.config_manager.save_user_preferences(prefs)
+
+        # Reload data to pick up any changes from tree view
+        self._reload_sessions_and_workflows()
+        self._refresh_tab_view()
+        self._update_button_states()
+
+    def _refresh_tab_view(self):
+        """Refresh tab view with categories as tabs."""
+        # Clear existing tabs
+        self.tab_widget.clear()
+        self.tab_list_widgets.clear()
+
+        # Only show root-level categories as tabs
+        root_tabs = self.tabs_collection.get_root_tabs()
+        for tab in root_tabs:
+            self._create_tab_for_category(tab)
+
+    def _create_tab_for_category(self, tab: Tab):
+        """Create a QTabWidget tab for a category.
+
+        Args:
+            tab: Tab/category to create
+        """
+        list_widget = QListWidget()
+        list_widget.itemDoubleClicked.connect(self._on_tab_item_double_clicked)
+        list_widget.itemSelectionChanged.connect(self._update_button_states)
+
+        # Store reference
+        self.tab_list_widgets[tab.id] = list_widget
+
+        # Add to tabs widget
+        self.tab_widget.addTab(list_widget, f"{tab.icon} {tab.name}")
+
+        # Populate with sessions and workflows for this category (and subcategories)
+        self._populate_tab_list(tab.id, list_widget)
+
+    def _populate_tab_list(self, tab_id: str, list_widget: QListWidget):
+        """Populate a list widget with sessions/workflows from a category and its children.
+
+        Args:
+            tab_id: Category ID
+            list_widget: List widget to populate
+        """
+        # Get this category and all descendants
+        category_ids = {tab_id}
+        descendants = self.tabs_collection.get_all_descendants(tab_id)
+        category_ids.update(d.id for d in descendants)
+
+        # Get all items for these categories
+        all_items = []
+        search_lower = self.search_text.lower()
+
+        for session in self.sessions:
+            if session.tab_id in category_ids:
+                if not search_lower or search_lower in session.name.lower():
+                    all_items.append((session, 'session'))
+
+        for workflow in self.workflows:
+            if workflow.tab_id in category_ids:
+                if not search_lower or search_lower in workflow.name.lower():
+                    all_items.append((workflow, 'workflow'))
+
+        # Sort by name
+        all_items.sort(key=lambda x: x[0].name)
+
+        # Add to list
+        for item_obj, item_type in all_items:
+            list_item = self._create_list_item(item_obj, item_type)
+            list_widget.addItem(list_item)
+
+    def _create_list_item(self, item_obj, item_type: str) -> QListWidgetItem:
+        """Create a list widget item for session or workflow.
+
+        Args:
+            item_obj: Session or Workflow object
+            item_type: 'session' or 'workflow'
+
+        Returns:
+            QListWidgetItem
+        """
+        if item_type == 'session':
+            display_text = self._format_session_text(item_obj)
+        else:
+            display_text = self._format_workflow_text(item_obj)
+
+        list_item = QListWidgetItem(display_text)
+        list_item.setData(Qt.ItemDataRole.UserRole, item_obj)
+        list_item.setData(Qt.ItemDataRole.UserRole + 1, item_type)
+
+        # Make workflows bold
+        if item_type == 'workflow':
+            font = list_item.font()
+            font.setBold(True)
+            list_item.setFont(font)
+
+        return list_item
+
+    def _on_tab_item_double_clicked(self, item: QListWidgetItem):
+        """Handle double-click on tab view list item.
+
+        Args:
+            item: Clicked item
+        """
+        self._on_launch_clicked()
+
+    def _get_current_item(self):
+        """Get currently selected item from either view mode.
+
+        Returns:
+            Tuple of (item_object, item_type) or (None, None)
+        """
+        if self.current_view_mode == "tree":
+            current_item = self.tree_widget.currentItem()
+            if current_item:
+                return (
+                    current_item.data(0, Qt.ItemDataRole.UserRole),
+                    current_item.data(0, Qt.ItemDataRole.UserRole + 1)
+                )
+        else:
+            # Tab view
+            current_tab_index = self.tab_widget.currentIndex()
+            if current_tab_index >= 0:
+                # Get the list widget for current tab
+                sorted_tabs = self.tabs_collection.get_root_tabs()
+                if current_tab_index < len(sorted_tabs):
+                    tab_id = sorted_tabs[current_tab_index].id
+                    list_widget = self.tab_list_widgets.get(tab_id)
+                    if list_widget:
+                        current_item = list_widget.currentItem()
+                        if current_item:
+                            return (
+                                current_item.data(Qt.ItemDataRole.UserRole),
+                                current_item.data(Qt.ItemDataRole.UserRole + 1)
+                            )
+
+        return (None, None)
