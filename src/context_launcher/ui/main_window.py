@@ -15,6 +15,8 @@ from ..core.config import ConfigManager
 from ..core.session import Session, Workflow, SessionType
 from ..core.tab import Tab, TabsCollection
 from ..core.workflow_executor import WorkflowExecutor, WorkflowExecutionResult, StepStatus
+from ..core.window_manager import WindowManager, WindowState
+from ..core.backup_manager import BackupManager
 from ..launchers import LaunchConfig, AppType, LauncherFactory
 from ..utils.logger import get_logger
 from .session_dialog import SessionDialog
@@ -36,6 +38,8 @@ class MainWindow(QMainWindow):
         self.workflows: List[Workflow] = []
         self.tabs_collection: TabsCollection = None
         self.workflow_executor = WorkflowExecutor(self.config_manager)
+        self.window_manager = WindowManager()
+        self.backup_manager = BackupManager(self.config_manager)
 
         # View mode widgets
         self.view_stack: QStackedWidget = None
@@ -54,8 +58,56 @@ class MainWindow(QMainWindow):
         self._load_sessions()
         self._load_workflows()
 
+    def _create_menu_bar(self):
+        """Create application menu bar."""
+        menubar = self.menuBar()
+
+        # File menu
+        file_menu = menubar.addMenu("&File")
+
+        # Backup
+        backup_action = QAction("💾 Create Backup...", self)
+        backup_action.triggered.connect(self._on_create_backup)
+        file_menu.addAction(backup_action)
+
+        # Restore
+        restore_action = QAction("📦 Restore from Backup...", self)
+        restore_action.triggered.connect(self._on_restore_backup)
+        file_menu.addAction(restore_action)
+
+        file_menu.addSeparator()
+
+        # Import
+        import_action = QAction("📥 Import...", self)
+        import_action.triggered.connect(self._on_import)
+        file_menu.addAction(import_action)
+
+        # Export
+        export_action = QAction("📤 Export...", self)
+        export_action.triggered.connect(self._on_export)
+        file_menu.addAction(export_action)
+
+        file_menu.addSeparator()
+
+        # Exit
+        exit_action = QAction("❌ Exit", self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+        # View menu
+        view_menu = menubar.addMenu("&View")
+
+        # Dark theme toggle
+        self.dark_theme_action = QAction("🌙 Dark Theme", self)
+        self.dark_theme_action.setCheckable(True)
+        self.dark_theme_action.triggered.connect(self._toggle_theme)
+        view_menu.addAction(self.dark_theme_action)
+
     def _init_ui(self):
         """Initialize UI components."""
+        # Create menu bar
+        self._create_menu_bar()
+
         # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -504,9 +556,27 @@ class MainWindow(QMainWindow):
 
         elif item_type in ['session', 'workflow']:
             # Session/Workflow context menu
+            item_obj = item.data(0, Qt.ItemDataRole.UserRole)
+
             launch_action = QAction("▶ Launch", self)
             launch_action.triggered.connect(self._on_launch_clicked)
             menu.addAction(launch_action)
+
+            menu.addSeparator()
+
+            # Favorites toggle
+            if item_obj.metadata.favorite:
+                fav_action = QAction("⭐ Remove from Favorites", self)
+            else:
+                fav_action = QAction("☆ Add to Favorites", self)
+            fav_action.triggered.connect(lambda: self._toggle_favorite(item_obj, item_type))
+            menu.addAction(fav_action)
+
+            # Configure window position (only for sessions, not workflows)
+            if item_type == 'session':
+                config_window_action = QAction("🪟 Configure Window Position", self)
+                config_window_action.triggered.connect(lambda: self._configure_window_position(item_obj))
+                menu.addAction(config_window_action)
 
             menu.addSeparator()
 
@@ -607,9 +677,35 @@ class MainWindow(QMainWindow):
             result = launcher.launch()
 
             if result.success:
-                # Update stats
+                # Update stats first
                 session.update_launch_stats()
                 self.config_manager.save_session(session.id, session.to_dict())
+
+                # Handle window management if supported (non-blocking)
+                if result.process_id and session.metadata.window_state:
+                    # Position window in background thread to avoid freezing GUI
+                    import threading
+
+                    def position_window():
+                        try:
+                            window_state = WindowState.from_dict(session.metadata.window_state)
+                            app_name = session.launch_config.app_name  # Get app name for smarter window finding
+                            # Wait up to 10 seconds for window to appear, then position it
+                            success = self.window_manager.set_window_state(
+                                result.process_id,
+                                window_state,
+                                timeout=10.0,
+                                app_name=app_name
+                            )
+                            if success:
+                                self.logger.info(f"Automatically positioned window for {session.name}")
+                            else:
+                                self.logger.warning(f"Could not position window for {session.name} (window may not have appeared)")
+                        except Exception as e:
+                            self.logger.error(f"Window positioning error: {e}")
+
+                    thread = threading.Thread(target=position_window, daemon=True)
+                    thread.start()
 
                 QMessageBox.information(
                     self,
@@ -868,10 +964,16 @@ class MainWindow(QMainWindow):
             self.logger.info(f"Created default session: {session.name}")
 
     def _load_user_preferences(self):
-        """Load user preferences and apply view mode."""
+        """Load user preferences and apply view mode and theme."""
         prefs = self.config_manager.load_user_preferences()
         view_mode = prefs.get('ui', {}).get('view_mode', 'tree')
         self.current_view_mode = view_mode
+
+        # Apply theme
+        theme = prefs.get('ui', {}).get('theme', 'system')
+        if theme == 'dark':
+            self.dark_theme_action.setChecked(True)
+            self._toggle_theme()
 
     def _reload_sessions_and_workflows(self):
         """Reload sessions and workflows from disk to pick up any changes."""
@@ -1066,3 +1168,322 @@ class MainWindow(QMainWindow):
                             )
 
         return (None, None)
+
+    def _toggle_favorite(self, item_obj, item_type: str):
+        """Toggle favorite status for a session or workflow.
+
+        Args:
+            item_obj: Session or Workflow object
+            item_type: 'session' or 'workflow'
+        """
+        item_obj.metadata.favorite = not item_obj.metadata.favorite
+
+        if item_type == 'session':
+            self.config_manager.save_session(item_obj.id, item_obj.to_dict())
+        else:
+            self.config_manager.save_workflow(item_obj.id, item_obj.to_dict())
+
+        # Refresh UI
+        if self.current_view_mode == "tree":
+            self._refresh_tree()
+        else:
+            self._refresh_tab_view()
+
+        status = "added to" if item_obj.metadata.favorite else "removed from"
+        QMessageBox.information(
+            self,
+            "Favorites",
+            f"{item_obj.name} {status} favorites."
+        )
+
+    def _configure_window_position(self, session: Session):
+        """Configure window position for a session using a simple dialog.
+
+        Args:
+            session: Session to configure window position for
+        """
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QSpinBox, QCheckBox, QDialogButtonBox, QFormLayout, QComboBox
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Configure Window Position - {session.name}")
+        dialog.setMinimumWidth(400)
+
+        layout = QVBoxLayout(dialog)
+
+        # Info label
+        info_label = QLabel(
+            "Configure where this session's window should appear when launched.\n"
+            "Leave unchecked to use default position."
+        )
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        # Enable checkbox
+        enable_checkbox = QCheckBox("Position window automatically on launch")
+        if session.metadata.window_state:
+            enable_checkbox.setChecked(True)
+        layout.addWidget(enable_checkbox)
+
+        # Form for position settings
+        form_layout = QFormLayout()
+
+        # Monitor selection
+        monitor_combo = QComboBox()
+        monitors = self.window_manager.get_monitors()
+        for i, mon in enumerate(monitors):
+            primary = " (Primary)" if mon.get('is_primary') else ""
+            monitor_combo.addItem(f"Monitor {i + 1}{primary} - {mon['width']}x{mon['height']}", i)
+
+        current_monitor = 0
+        if session.metadata.window_state:
+            current_monitor = session.metadata.window_state.get('monitor_index', 0)
+        monitor_combo.setCurrentIndex(current_monitor)
+        form_layout.addRow("Monitor:", monitor_combo)
+
+        # X position
+        x_spin = QSpinBox()
+        x_spin.setRange(-10000, 10000)
+        x_spin.setValue(session.metadata.window_state.get('x', 100) if session.metadata.window_state else 100)
+        form_layout.addRow("X Position:", x_spin)
+
+        # Y position
+        y_spin = QSpinBox()
+        y_spin.setRange(-10000, 10000)
+        y_spin.setValue(session.metadata.window_state.get('y', 100) if session.metadata.window_state else 100)
+        form_layout.addRow("Y Position:", y_spin)
+
+        # Width
+        width_spin = QSpinBox()
+        width_spin.setRange(100, 10000)
+        width_spin.setValue(session.metadata.window_state.get('width', 1200) if session.metadata.window_state else 1200)
+        form_layout.addRow("Width:", width_spin)
+
+        # Height
+        height_spin = QSpinBox()
+        height_spin.setRange(100, 10000)
+        height_spin.setValue(session.metadata.window_state.get('height', 800) if session.metadata.window_state else 800)
+        form_layout.addRow("Height:", height_spin)
+
+        # Maximized checkbox
+        maximized_checkbox = QCheckBox("Start maximized")
+        if session.metadata.window_state:
+            maximized_checkbox.setChecked(session.metadata.window_state.get('is_maximized', False))
+        form_layout.addRow("", maximized_checkbox)
+
+        layout.addLayout(form_layout)
+
+        # Buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        # Execute dialog
+        if dialog.exec():
+            if enable_checkbox.isChecked():
+                # Save window state
+                window_state = {
+                    'x': x_spin.value(),
+                    'y': y_spin.value(),
+                    'width': width_spin.value(),
+                    'height': height_spin.value(),
+                    'monitor_index': monitor_combo.currentData(),
+                    'is_maximized': maximized_checkbox.isChecked(),
+                    'is_minimized': False
+                }
+                session.metadata.window_state = window_state
+            else:
+                # Disable window positioning
+                session.metadata.window_state = None
+
+            # Save session
+            self.config_manager.save_session(session.id, session.to_dict())
+
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Window configuration saved for {session.name}!"
+            )
+
+    def _on_create_backup(self):
+        """Create a complete backup of all data."""
+        from PySide6.QtWidgets import QFileDialog
+        from datetime import datetime
+
+        # Suggest filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_name = f"context_launcher_backup_{timestamp}.zip"
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Create Backup",
+            str(Path.home() / default_name),
+            "ZIP Files (*.zip)"
+        )
+
+        if file_path:
+            success = self.backup_manager.create_backup(Path(file_path))
+
+            if success:
+                QMessageBox.information(
+                    self,
+                    "Backup Created",
+                    f"Backup successfully created:\n{file_path}"
+                )
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Backup Failed",
+                    "Failed to create backup. Check the logs for details."
+                )
+
+    def _on_restore_backup(self):
+        """Restore from a backup file."""
+        from PySide6.QtWidgets import QFileDialog
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Restore from Backup",
+            str(Path.home()),
+            "ZIP Files (*.zip)"
+        )
+
+        if file_path:
+            # Confirm action
+            reply = QMessageBox.question(
+                self,
+                "Confirm Restore",
+                "Restoring from backup will REPLACE all current data.\n\n"
+                "Are you sure you want to continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+
+            if reply == QMessageBox.StandardButton.Yes:
+                success = self.backup_manager.restore_backup(Path(file_path), merge=False)
+
+                if success:
+                    QMessageBox.information(
+                        self,
+                        "Restore Complete",
+                        "Backup restored successfully!\n\nThe application will now reload."
+                    )
+                    # Reload data
+                    self._load_tabs()
+                    self._load_sessions()
+                    self._load_workflows()
+                    if self.current_view_mode == "tree":
+                        self._refresh_tree()
+                    else:
+                        self._refresh_tab_view()
+                else:
+                    QMessageBox.critical(
+                        self,
+                        "Restore Failed",
+                        "Failed to restore backup. Check the logs for details."
+                    )
+
+    def _on_import(self):
+        """Import sessions/workflows from a ZIP file."""
+        from PySide6.QtWidgets import QFileDialog
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Data",
+            str(Path.home()),
+            "ZIP Files (*.zip)"
+        )
+
+        if file_path:
+            success = self.backup_manager.import_from_zip(Path(file_path))
+
+            if success:
+                QMessageBox.information(
+                    self,
+                    "Import Complete",
+                    "Data imported successfully!\n\nThe application will now reload."
+                )
+                # Reload data
+                self._load_tabs()
+                self._load_sessions()
+                self._load_workflows()
+                if self.current_view_mode == "tree":
+                    self._refresh_tree()
+                else:
+                    self._refresh_tab_view()
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Import Failed",
+                    "Failed to import data. Check the logs for details."
+                )
+
+    def _on_export(self):
+        """Export selected sessions/workflows to a ZIP file."""
+        from PySide6.QtWidgets import QFileDialog
+        from datetime import datetime
+
+        # For now, export all sessions and workflows
+        # TODO: Could add UI to select specific items
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_name = f"context_launcher_export_{timestamp}.zip"
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Data",
+            str(Path.home() / default_name),
+            "ZIP Files (*.zip)"
+        )
+
+        if file_path:
+            # Export everything (same as backup)
+            success = self.backup_manager.create_backup(Path(file_path))
+
+            if success:
+                QMessageBox.information(
+                    self,
+                    "Export Complete",
+                    f"Data exported successfully:\n{file_path}"
+                )
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Export Failed",
+                    "Failed to export data. Check the logs for details."
+                )
+
+    def _toggle_theme(self):
+        """Toggle between light and dark theme."""
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtGui import QPalette, QColor
+
+        if self.dark_theme_action.isChecked():
+            # Apply dark theme
+            dark_palette = QPalette()
+            dark_palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
+            dark_palette.setColor(QPalette.ColorRole.WindowText, QColor(255, 255, 255))
+            dark_palette.setColor(QPalette.ColorRole.Base, QColor(35, 35, 35))
+            dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
+            dark_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(25, 25, 25))
+            dark_palette.setColor(QPalette.ColorRole.ToolTipText, QColor(255, 255, 255))
+            dark_palette.setColor(QPalette.ColorRole.Text, QColor(255, 255, 255))
+            dark_palette.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
+            dark_palette.setColor(QPalette.ColorRole.ButtonText, QColor(255, 255, 255))
+            dark_palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0))
+            dark_palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
+            dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
+            dark_palette.setColor(QPalette.ColorRole.HighlightedText, QColor(35, 35, 35))
+            QApplication.instance().setPalette(dark_palette)
+
+            # Save preference
+            prefs = self.config_manager.load_user_preferences()
+            prefs['ui']['theme'] = 'dark'
+            self.config_manager.save_user_preferences(prefs)
+        else:
+            # Revert to system theme
+            QApplication.instance().setPalette(QApplication.style().standardPalette())
+
+            # Save preference
+            prefs = self.config_manager.load_user_preferences()
+            prefs['ui']['theme'] = 'system'
+            self.config_manager.save_user_preferences(prefs)

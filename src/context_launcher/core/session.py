@@ -37,6 +37,7 @@ class SessionMetadata(BaseModel):
     favorite: bool = False
     launch_count: int = 0
     last_launched: Optional[datetime] = None
+    window_state: Optional[Dict[str, Any]] = None  # Saved window position/size
 
 
 class LaunchConfiguration(BaseModel):
