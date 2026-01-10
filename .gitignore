@@ -38,3 +38,7 @@ Thumbs.db
 *.log
 *.tmp
 nul
+
+# Virtual enviroonments
+.env/
+.venv/

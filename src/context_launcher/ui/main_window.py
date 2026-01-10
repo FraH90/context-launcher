@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QStackedWidget
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QColor, QBrush, QAction
+from PySide6.QtGui import QFont, QColor, QBrush, QAction, QShortcut, QKeySequence
 from pathlib import Path
 from typing import Dict, List
 
@@ -54,6 +54,7 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 700, 750)
 
         self._init_ui()
+        self._setup_keyboard_shortcuts()
         self._load_user_preferences()
         self._load_tabs()
         self._load_sessions()
@@ -159,18 +160,6 @@ class MainWindow(QMainWindow):
         self.toggle_view_btn.clicked.connect(self._toggle_view_mode)
         header_layout.addWidget(self.toggle_view_btn)
 
-        self.new_category_btn = QPushButton("+ Category")
-        self.new_category_btn.clicked.connect(self._on_new_category_clicked)
-        header_layout.addWidget(self.new_category_btn)
-
-        self.add_session_btn = QPushButton("+ Session")
-        self.add_session_btn.clicked.connect(self._on_add_session_clicked)
-        header_layout.addWidget(self.add_session_btn)
-
-        self.add_workflow_btn = QPushButton("+ Workflow")
-        self.add_workflow_btn.clicked.connect(self._on_add_workflow_clicked)
-        header_layout.addWidget(self.add_workflow_btn)
-
         layout.addLayout(header_layout)
 
         # Search bar
@@ -202,7 +191,6 @@ class MainWindow(QMainWindow):
         self.tree_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree_widget.customContextMenuRequested.connect(self._show_context_menu)
         self.tree_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
-        self.tree_widget.itemSelectionChanged.connect(self._update_button_states)
         self.tree_widget.itemExpanded.connect(self._on_item_expanded)
         self.tree_widget.itemCollapsed.connect(self._on_item_collapsed)
         self.tree_widget.item_dropped.connect(self._on_tree_item_dropped)
@@ -219,32 +207,12 @@ class MainWindow(QMainWindow):
         # Create Tab View (index 1)
         self.tab_widget = QTabWidget()
         self.tab_widget.setTabsClosable(False)  # Don't allow closing tabs in this mode
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)  # Handle tab changes
+        self.tab_widget.tabBar().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tab_widget.tabBar().customContextMenuRequested.connect(self._show_tab_context_menu)
         self.view_stack.addWidget(self.tab_widget)
 
         layout.addWidget(self.view_stack)
-
-        # Action buttons
-        button_layout = QHBoxLayout()
-        button_layout.setSpacing(10)
-
-        self.launch_btn = QPushButton("▶ Launch")
-        self.launch_btn.clicked.connect(self._on_launch_clicked)
-        button_layout.addWidget(self.launch_btn)
-
-        self.edit_btn = QPushButton("✏ Edit")
-        self.edit_btn.clicked.connect(self._on_edit_clicked)
-        button_layout.addWidget(self.edit_btn)
-
-        self.delete_btn = QPushButton("🗑 Delete")
-        self.delete_btn.clicked.connect(self._on_delete_clicked)
-        button_layout.addWidget(self.delete_btn)
-
-        layout.addLayout(button_layout)
-
-        # Initially disable buttons
-        self.launch_btn.setEnabled(False)
-        self.edit_btn.setEnabled(False)
-        self.delete_btn.setEnabled(False)
 
     def _load_tabs(self):
         """Load user-defined tabs/categories from JSON."""
@@ -256,25 +224,6 @@ class MainWindow(QMainWindow):
             self._switch_to_tree_view()
         else:
             self._switch_to_tab_view()
-
-    def _update_button_states(self):
-        """Update button enabled states based on selection."""
-        item_obj, item_type = self._get_current_item()
-
-        if not item_obj:
-            self.launch_btn.setEnabled(False)
-            self.edit_btn.setEnabled(False)
-            self.delete_btn.setEnabled(False)
-            return
-
-        # Can launch sessions and workflows
-        self.launch_btn.setEnabled(item_type in ['session', 'workflow'])
-
-        # Can edit anything
-        self.edit_btn.setEnabled(True)
-
-        # Can delete anything
-        self.delete_btn.setEnabled(True)
 
     def _load_sessions(self):
         """Load sessions from disk."""
@@ -549,10 +498,16 @@ class MainWindow(QMainWindow):
             position: Menu position
         """
         item = self.tree_widget.itemAt(position)
+        menu = QMenu(self)
+
+        # If no item clicked (empty space), show "Add New Category" option
         if not item:
+            new_category_action = QAction("📁 Add New Category", self)
+            new_category_action.triggered.connect(self._on_new_category_clicked)
+            menu.addAction(new_category_action)
+            menu.exec(self.tree_widget.viewport().mapToGlobal(position))
             return
 
-        menu = QMenu(self)
         item_type = item.data(0, Qt.ItemDataRole.UserRole + 1)
 
         if item_type == 'category':
@@ -617,6 +572,158 @@ class MainWindow(QMainWindow):
 
         menu.exec(self.tree_widget.viewport().mapToGlobal(position))
 
+    def _show_tab_context_menu(self, position):
+        """Show context menu for tab bar.
+
+        Args:
+            position: Menu position
+        """
+        # Get the tab index at the clicked position
+        tab_index = self.tab_widget.tabBar().tabAt(position)
+        if tab_index < 0:
+            return
+
+        # Don't show context menu on the "+" tab
+        if self.tab_widget.tabText(tab_index) == "+":
+            return
+
+        # Get the category for this tab
+        root_tabs = self.tabs_collection.get_root_tabs()
+        if tab_index >= len(root_tabs):
+            return
+
+        tab = root_tabs[tab_index]
+
+        menu = QMenu(self)
+
+        # Edit category
+        edit_action = QAction("✏ Edit Category", self)
+        edit_action.triggered.connect(lambda: self._edit_category_from_tab(tab))
+        menu.addAction(edit_action)
+
+        menu.addSeparator()
+
+        # Delete category
+        delete_action = QAction("🗑 Delete Category", self)
+        delete_action.triggered.connect(lambda: self._delete_category_from_tab(tab))
+        menu.addAction(delete_action)
+
+        menu.exec(self.tab_widget.tabBar().mapToGlobal(position))
+
+    def _edit_category_from_tab(self, tab: Tab):
+        """Edit category from tab view.
+
+        Args:
+            tab: Category to edit
+        """
+        from .category_dialog import CategoryDialog
+
+        dialog = CategoryDialog(self, category=tab, tabs_collection=self.tabs_collection)
+
+        if dialog.exec():
+            updated_category = dialog.get_category()
+            self.tabs_collection.update_tab(updated_category.id, updated_category.to_dict())
+            self.config_manager.save_tabs(self.tabs_collection.to_dict())
+            self._refresh_tab_view()
+            self.logger.info(f"Updated category: {updated_category.name}")
+
+    def _delete_category_from_tab(self, tab: Tab):
+        """Delete category from tab view.
+
+        Args:
+            tab: Category to delete
+        """
+        # Check if category has children or items
+        descendants = self.tabs_collection.get_all_descendants(tab.id)
+        category_ids = {tab.id} | {d.id for d in descendants}
+        has_sessions = any(s.tab_id in category_ids for s in self.sessions)
+        has_workflows = any(w.tab_id in category_ids for w in self.workflows)
+
+        if descendants or has_sessions or has_workflows:
+            QMessageBox.warning(
+                self,
+                "Cannot Delete",
+                "Cannot delete category that contains subcategories, sessions, or workflows.\n\n"
+                "Please move or delete all contents first."
+            )
+            return
+
+        # Confirm deletion
+        reply = QMessageBox.question(
+            self,
+            "Confirm Deletion",
+            f"Are you sure you want to delete the category '{tab.name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.tabs_collection.remove_tab(tab.id)
+            self.config_manager.save_tabs(self.tabs_collection.to_dict())
+            self._refresh_tab_view()
+            self.logger.info(f"Deleted category: {tab.name}")
+
+    def _show_tab_list_context_menu(self, position, category_id: str, list_widget: QListWidget):
+        """Show context menu for tab view list widget.
+
+        Args:
+            position: Menu position
+            category_id: ID of the category for this tab
+            list_widget: The list widget
+        """
+        # Check if click was on an item or empty space
+        item = list_widget.itemAt(position)
+
+        menu = QMenu(self)
+
+        if not item:
+            # Clicked on empty space - show "Add New" menu
+            new_session_action = QAction("📄 New Session", self)
+            new_session_action.triggered.connect(lambda: self._on_new_session_in_category(category_id))
+            menu.addAction(new_session_action)
+
+            new_workflow_action = QAction("⚡ New Workflow", self)
+            new_workflow_action.triggered.connect(lambda: self._on_new_workflow_in_category(category_id))
+            menu.addAction(new_workflow_action)
+        else:
+            # Clicked on an item - show item actions
+            item_data = item.data(Qt.ItemDataRole.UserRole)
+            item_type = item.data(Qt.ItemDataRole.UserRole + 1)
+
+            # Launch action
+            launch_action = QAction("▶ Launch", self)
+            launch_action.triggered.connect(lambda: self._launch_item_from_tab_view(item_data, item_type))
+            menu.addAction(launch_action)
+
+            menu.addSeparator()
+
+            # Favorites toggle
+            if item_data.metadata.favorite:
+                fav_action = QAction("⭐ Remove from Favorites", self)
+            else:
+                fav_action = QAction("☆ Add to Favorites", self)
+            fav_action.triggered.connect(lambda: self._toggle_favorite(item_data, item_type))
+            menu.addAction(fav_action)
+
+            # Configure window position (only for sessions)
+            if item_type == 'session':
+                config_window_action = QAction("🪟 Configure Window Position", self)
+                config_window_action.triggered.connect(lambda: self._configure_window_position(item_data))
+                menu.addAction(config_window_action)
+
+            menu.addSeparator()
+
+            # Edit action
+            edit_action = QAction("✏ Edit", self)
+            edit_action.triggered.connect(lambda: self._edit_item_from_tab_view(item_data, item_type))
+            menu.addAction(edit_action)
+
+            # Delete action
+            delete_action = QAction("🗑 Delete", self)
+            delete_action.triggered.connect(lambda: self._delete_item_from_tab_view(item_data, item_type))
+            menu.addAction(delete_action)
+
+        menu.exec(list_widget.viewport().mapToGlobal(position))
+
     def _on_new_session_in_category(self, category_id: str):
         """Create new session in specific category.
 
@@ -630,7 +737,12 @@ class MainWindow(QMainWindow):
             if session:
                 self.sessions.append(session)
                 self.config_manager.save_session(session.id, session.to_dict())
-                self._refresh_tree()
+
+                # Refresh based on current view mode
+                if self.current_view_mode == "tree":
+                    self._refresh_tree()
+                else:
+                    self._refresh_tab_view()
 
     def _on_new_workflow_in_category(self, category_id: str):
         """Create new workflow in specific category.
@@ -650,7 +762,12 @@ class MainWindow(QMainWindow):
             if workflow:
                 self.workflows.append(workflow)
                 self.config_manager.save_workflow(workflow.id, workflow.to_dict())
-                self._refresh_tree()
+
+                # Refresh based on current view mode
+                if self.current_view_mode == "tree":
+                    self._refresh_tree()
+                else:
+                    self._refresh_tab_view()
 
     def _on_new_subcategory(self, parent_id: str):
         """Create new subcategory under a parent.
@@ -667,6 +784,67 @@ class MainWindow(QMainWindow):
             self.tabs_collection.add_tab(category)
             self.config_manager.save_tabs(self.tabs_collection.to_dict())
             self._refresh_tree()
+
+    def _launch_item_from_tab_view(self, item_obj, item_type: str):
+        """Launch item from tab view context menu."""
+        if item_type == 'session':
+            self._launch_session(item_obj)
+        elif item_type == 'workflow':
+            self._launch_workflow(item_obj)
+
+    def _edit_item_from_tab_view(self, item_obj, item_type: str):
+        """Edit item from tab view context menu."""
+        if item_type == 'session':
+            dialog = SessionDialog(self, session=item_obj, tabs_collection=self.tabs_collection)
+            if dialog.exec():
+                updated_session = dialog.get_session()
+                if updated_session:
+                    # Find and update in list
+                    for i, s in enumerate(self.sessions):
+                        if s.id == item_obj.id:
+                            self.sessions[i] = updated_session
+                            break
+                    self.config_manager.save_session(updated_session.id, updated_session.to_dict())
+                    self._refresh_tab_view()
+
+        elif item_type == 'workflow':
+            dialog = WorkflowDialog(
+                self,
+                workflow=item_obj,
+                sessions=self.sessions,
+                tabs_collection=self.tabs_collection
+            )
+            if dialog.exec():
+                updated_workflow = dialog.get_workflow()
+                if updated_workflow:
+                    # Find and update in list
+                    for i, w in enumerate(self.workflows):
+                        if w.id == item_obj.id:
+                            self.workflows[i] = updated_workflow
+                            break
+                    self.config_manager.save_workflow(updated_workflow.id, updated_workflow.to_dict())
+                    self._refresh_tab_view()
+
+    def _delete_item_from_tab_view(self, item_obj, item_type: str):
+        """Delete item from tab view context menu."""
+        # Confirm deletion
+        item_name = item_obj.name
+        reply = QMessageBox.question(
+            self,
+            "Confirm Deletion",
+            f"Are you sure you want to delete '{item_name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            if item_type == 'session':
+                self.sessions.remove(item_obj)
+                self.config_manager.delete_session(item_obj.id)
+            elif item_type == 'workflow':
+                self.workflows.remove(item_obj)
+                self.config_manager.delete_workflow(item_obj.id)
+
+            self._refresh_tab_view()
 
     def _on_launch_clicked(self):
         """Handle launch button click."""
@@ -800,53 +978,6 @@ class MainWindow(QMainWindow):
                 f"An error occurred while launching workflow:\n\n{str(e)}"
             )
 
-    def _on_add_session_clicked(self):
-        """Handle add session button click."""
-        # Get current category to pre-select in dialog
-        current_tab_id = None
-        current_item = self.tree_widget.currentItem()
-        if current_item:
-            item_type = current_item.data(0, Qt.ItemDataRole.UserRole + 1)
-            if item_type == 'category':
-                # Use selected category
-                tab_obj = current_item.data(0, Qt.ItemDataRole.UserRole)
-                current_tab_id = tab_obj.id
-
-        dialog = SessionDialog(self, tabs_collection=self.tabs_collection, default_tab_id=current_tab_id)
-
-        if dialog.exec():
-            session = dialog.get_session()
-            if session:
-                self.sessions.append(session)
-                self.config_manager.save_session(session.id, session.to_dict())
-                self._refresh_tree()
-
-    def _on_add_workflow_clicked(self):
-        """Handle add workflow button click."""
-        # Get current category to pre-select in dialog
-        current_tab_id = None
-        current_item = self.tree_widget.currentItem()
-        if current_item:
-            item_type = current_item.data(0, Qt.ItemDataRole.UserRole + 1)
-            if item_type == 'category':
-                # Use selected category
-                tab_obj = current_item.data(0, Qt.ItemDataRole.UserRole)
-                current_tab_id = tab_obj.id
-
-        dialog = WorkflowDialog(
-            self,
-            sessions=self.sessions,
-            tabs_collection=self.tabs_collection,
-            default_tab_id=current_tab_id
-        )
-
-        if dialog.exec():
-            workflow = dialog.get_workflow()
-            if workflow:
-                self.workflows.append(workflow)
-                self.config_manager.save_workflow(workflow.id, workflow.to_dict())
-                self._refresh_tree()
-
     def _on_edit_clicked(self):
         """Handle edit button click."""
         item_obj, item_type = self._get_current_item()
@@ -943,6 +1074,74 @@ class MainWindow(QMainWindow):
 
             self._refresh_tree()
 
+    def _setup_keyboard_shortcuts(self):
+        """Setup application keyboard shortcuts."""
+        # Ctrl+Tab to cycle forward through tabs
+        self.next_tab_shortcut = QShortcut(QKeySequence("Ctrl+Tab"), self)
+        self.next_tab_shortcut.activated.connect(self._cycle_tab_forward)
+
+        # Ctrl+Shift+Tab to cycle backward through tabs
+        self.prev_tab_shortcut = QShortcut(QKeySequence("Ctrl+Shift+Tab"), self)
+        self.prev_tab_shortcut.activated.connect(self._cycle_tab_backward)
+
+    def _cycle_tab_forward(self):
+        """Cycle to the next tab (Ctrl+Tab)."""
+        # Only work in tab view mode
+        if self.current_view_mode != "tabs":
+            return
+
+        # Get the number of real tabs (excluding the + tab)
+        num_real_tabs = self.tab_widget.count() - 1  # Subtract 1 for the + tab
+
+        if num_real_tabs <= 0:
+            return
+
+        current_index = self.tab_widget.currentIndex()
+
+        # If somehow we're on the + tab, reset to first tab
+        if current_index >= num_real_tabs:
+            next_index = 0
+        else:
+            next_index = (current_index + 1) % num_real_tabs  # Cycle within real tabs only
+
+        self.tab_widget.setCurrentIndex(next_index)
+
+    def _cycle_tab_backward(self):
+        """Cycle to the previous tab (Ctrl+Shift+Tab)."""
+        # Only work in tab view mode
+        if self.current_view_mode != "tabs":
+            return
+
+        # Get the number of real tabs (excluding the + tab)
+        num_real_tabs = self.tab_widget.count() - 1  # Subtract 1 for the + tab
+
+        if num_real_tabs <= 0:
+            return
+
+        current_index = self.tab_widget.currentIndex()
+
+        # If somehow we're on the + tab, reset to last real tab
+        if current_index >= num_real_tabs:
+            prev_index = num_real_tabs - 1
+        else:
+            prev_index = (current_index - 1) % num_real_tabs  # Cycle within real tabs only
+
+        self.tab_widget.setCurrentIndex(prev_index)
+
+    def _on_tab_changed(self, index: int):
+        """Handle tab change - detect if "+" tab was clicked.
+
+        Args:
+            index: New tab index
+        """
+        # Check if this is the "+" tab (last tab)
+        if index == self.tab_widget.count() - 1 and self.tab_widget.tabText(index) == "+":
+            # User clicked the "+" tab, create a new category
+            self._on_new_category_clicked()
+            # Switch back to the previous tab (before the + tab)
+            if self.tab_widget.count() > 1:
+                self.tab_widget.setCurrentIndex(self.tab_widget.count() - 2)
+
     def _on_new_category_clicked(self):
         """Handle new category button click."""
         dialog = CategoryDialog(self, tabs_collection=self.tabs_collection)
@@ -951,7 +1150,17 @@ class MainWindow(QMainWindow):
             category = dialog.get_category()
             self.tabs_collection.add_tab(category)
             self.config_manager.save_tabs(self.tabs_collection.to_dict())
-            self._refresh_tree()
+
+            # Refresh based on current view mode
+            if self.current_view_mode == "tree":
+                self._refresh_tree()
+            else:
+                self._refresh_tab_view()
+                # Switch to the newly created tab (before the + tab)
+                new_tab_index = self.tab_widget.count() - 2
+                if new_tab_index >= 0:
+                    self.tab_widget.setCurrentIndex(new_tab_index)
+
             self.logger.info(f"Created new category: {category.name}")
 
     def _load_workflows(self):
@@ -1037,7 +1246,6 @@ class MainWindow(QMainWindow):
         self.current_view_mode = "tree"
         self.view_stack.setCurrentIndex(0)
         self.toggle_view_btn.setText("🔄 Switch to Tab View")
-        self.new_category_btn.setText("+ Category")
 
         # Save preference
         prefs = self.config_manager.load_user_preferences()
@@ -1045,14 +1253,12 @@ class MainWindow(QMainWindow):
         self.config_manager.save_user_preferences(prefs)
 
         self._refresh_tree()
-        self._update_button_states()
 
     def _switch_to_tab_view(self):
         """Switch to tab view mode."""
         self.current_view_mode = "tabs"
         self.view_stack.setCurrentIndex(1)
         self.toggle_view_btn.setText("🔄 Switch to Tree View")
-        self.new_category_btn.setText("+ Tab")
 
         # Save preference
         prefs = self.config_manager.load_user_preferences()
@@ -1062,7 +1268,6 @@ class MainWindow(QMainWindow):
         # Reload data to pick up any changes from tree view
         self._reload_sessions_and_workflows()
         self._refresh_tab_view()
-        self._update_button_states()
 
     def _refresh_tab_view(self):
         """Refresh tab view with categories as tabs."""
@@ -1075,6 +1280,18 @@ class MainWindow(QMainWindow):
         for tab in root_tabs:
             self._create_tab_for_category(tab)
 
+        # Add permanent "+" tab for creating new categories
+        plus_widget = QWidget()
+        plus_layout = QVBoxLayout(plus_widget)
+        plus_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        plus_label = QLabel("Click this tab to add a new category")
+        plus_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        plus_label.setStyleSheet("color: gray; font-size: 12pt;")
+        plus_layout.addWidget(plus_label)
+
+        self.tab_widget.addTab(plus_widget, "+")
+
     def _create_tab_for_category(self, tab: Tab):
         """Create a QTabWidget tab for a category.
 
@@ -1083,7 +1300,12 @@ class MainWindow(QMainWindow):
         """
         list_widget = QListWidget()
         list_widget.itemDoubleClicked.connect(self._on_tab_item_double_clicked)
-        list_widget.itemSelectionChanged.connect(self._update_button_states)
+
+        # Enable context menu for empty space clicks
+        list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        list_widget.customContextMenuRequested.connect(
+            lambda pos: self._show_tab_list_context_menu(pos, tab.id, list_widget)
+        )
 
         # Store reference
         self.tab_list_widgets[tab.id] = list_widget

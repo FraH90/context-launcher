@@ -300,8 +300,6 @@ class SessionDialog(QDialog):
         custom_label = QLabel("<b>Custom Executable</b>")
         right_layout.addWidget(custom_label)
 
-        form_layout = QFormLayout()
-
         # Executable path
         exe_layout = QHBoxLayout()
         self.executable_edit = QLineEdit()
@@ -313,12 +311,32 @@ class SessionDialog(QDialog):
         self.browse_exe_btn.clicked.connect(self._browse_executable)
         exe_layout.addWidget(self.browse_exe_btn)
 
-        form_layout.addRow("Executable:", exe_layout)
+        right_layout.addLayout(exe_layout)
+
+        right_layout.addStretch()
+
+        main_layout.addWidget(right_widget, stretch=1)
+
+        layout.addLayout(main_layout)
+
+        # BOTTOM SECTION: Shared fields for both known apps and custom executables
+        layout.addSpacing(15)
+
+        # Separator line
+        separator_line = QLabel()
+        separator_line.setFrameStyle(QLabel.Shape.HLine | QLabel.Shadow.Sunken)
+        layout.addWidget(separator_line)
+
+        shared_label = QLabel("<b>Optional Configuration (applies to both known apps and custom executables)</b>")
+        shared_label.setWordWrap(True)
+        layout.addWidget(shared_label)
+
+        shared_form = QFormLayout()
 
         # Arguments
         self.arguments_edit = QLineEdit()
         self.arguments_edit.setPlaceholderText("Optional command-line arguments")
-        form_layout.addRow("Arguments:", self.arguments_edit)
+        shared_form.addRow("Arguments:", self.arguments_edit)
 
         # Working directory
         workdir_layout = QHBoxLayout()
@@ -330,14 +348,10 @@ class SessionDialog(QDialog):
         self.browse_workdir_btn.clicked.connect(self._browse_workdir)
         workdir_layout.addWidget(self.browse_workdir_btn)
 
-        form_layout.addRow("Working Dir:", workdir_layout)
+        shared_form.addRow("Working Dir:", workdir_layout)
 
-        right_layout.addLayout(form_layout)
-        right_layout.addStretch()
-
-        main_layout.addWidget(right_widget, stretch=1)
-
-        layout.addLayout(main_layout)
+        layout.addLayout(shared_form)
+        layout.addStretch()
 
         return widget
 
@@ -347,8 +361,7 @@ class SessionDialog(QDialog):
 
         if selected_app:  # If a known app is selected
             self.executable_edit.clear()
-            self.arguments_edit.clear()
-            self.workdir_edit.clear()
+            # Don't clear arguments_edit and workdir_edit - they can be used for known apps too
 
             # Show workspace field only for VS Code
             is_vscode = selected_app == "vscode"
@@ -489,6 +502,15 @@ class SessionDialog(QDialog):
             if app_name == "vscode":
                 self.workspace_edit.setText(params.get('workspace', '') or params.get('folder', ''))
 
+            # Load arguments and working directory (shared fields)
+            args = params.get('arguments', [])
+            if isinstance(args, list):
+                self.arguments_edit.setText(' '.join(args))
+            else:
+                self.arguments_edit.setText(str(args))
+
+            self.workdir_edit.setText(params.get('working_directory', ''))
+
         else:  # Generic
             self.tabs.setCurrentIndex(1)  # Custom Apps tab
 
@@ -601,6 +623,11 @@ class SessionDialog(QDialog):
             # Known app selected (vscode, slack, spotify)
             app = selected_app_data
 
+            # Get arguments and working directory (shared fields)
+            args_text = self.arguments_edit.text().strip()
+            arguments = args_text.split() if args_text else []
+            workdir = self.workdir_edit.text().strip() or None
+
             # VS Code requires workspace
             if app == "vscode":
                 workspace = self.workspace_edit.text().strip()
@@ -615,14 +642,23 @@ class SessionDialog(QDialog):
                     self.session.tab_id = tab_id
                     self.session.launch_config.app_name = app
                     self.session.launch_config.parameters['workspace'] = workspace
+                    if arguments:
+                        self.session.launch_config.parameters['arguments'] = arguments
+                    if workdir:
+                        self.session.launch_config.parameters['working_directory'] = workdir
                     return self.session
                 else:
-                    return create_vscode_session(
+                    session = create_vscode_session(
                         name=name,
                         workspace_path=workspace,
                         icon=icon,
                         tab_id=tab_id
                     )
+                    if arguments:
+                        session.launch_config.parameters['arguments'] = arguments
+                    if workdir:
+                        session.launch_config.parameters['working_directory'] = workdir
+                    return session
             else:
                 # Slack, Spotify, etc.
                 if self.editing and self.session:
@@ -631,15 +667,24 @@ class SessionDialog(QDialog):
                     self.session.icon = icon
                     self.session.tab_id = tab_id
                     self.session.launch_config.app_name = app
+                    if arguments:
+                        self.session.launch_config.parameters['arguments'] = arguments
+                    if workdir:
+                        self.session.launch_config.parameters['working_directory'] = workdir
                     return self.session
                 else:
-                    return create_generic_app_session(
+                    session = create_generic_app_session(
                         name=name,
                         app_name=app,
                         executable_path="",  # Will be auto-detected
                         icon=icon,
                         tab_id=tab_id
                     )
+                    if arguments:
+                        session.launch_config.parameters['arguments'] = arguments
+                    if workdir:
+                        session.launch_config.parameters['working_directory'] = workdir
+                    return session
 
         elif executable:
             # Custom executable path provided
