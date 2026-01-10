@@ -13,6 +13,22 @@ if sys.platform == 'win32':
     import win32con
     import win32process
     import win32api
+elif sys.platform == 'darwin':
+    from Quartz import (
+        CGWindowListCopyWindowInfo,
+        kCGWindowListOptionOnScreenOnly,
+        kCGNullWindowID,
+        CGDisplayBounds,
+        CGMainDisplayID,
+        CGGetActiveDisplayList,
+    )
+    from AppKit import (
+        NSWorkspace,
+        NSRunningApplication,
+        NSApplicationActivateIgnoringOtherApps,
+        NSScreen,
+    )
+    import subprocess
 
 
 @dataclass
@@ -391,22 +407,213 @@ class WindowManager:
             self.logger.error(f"Failed to get monitors: {e}")
             return []
 
-    # macOS implementation (placeholder)
-
-    def _get_window_state_macos(self, process_id: int, timeout: float) -> Optional[WindowState]:
-        """Get window state on macOS."""
-        self.logger.warning("Window management not yet implemented for macOS")
-        return None
-
-    def _set_window_state_macos(self, process_id: int, state: WindowState, timeout: float) -> bool:
-        """Set window state on macOS."""
-        self.logger.warning("Window management not yet implemented for macOS")
-        return False
+    # macOS implementation
 
     def _get_monitors_macos(self) -> List[Dict[str, Any]]:
-        """Get monitor information on macOS."""
-        self.logger.warning("Monitor detection not yet implemented for macOS")
-        return []
+        """Get monitor information on macOS using NSScreen."""
+        try:
+            monitors = []
+            screens = NSScreen.screens()
+
+            for i, screen in enumerate(screens):
+                frame = screen.frame()
+                visible_frame = screen.visibleFrame()
+
+                # NSScreen uses bottom-left origin, convert to top-left
+                # Main screen is at index 0
+                monitors.append({
+                    'index': i,
+                    'is_primary': i == 0,
+                    'x': int(frame.origin.x),
+                    'y': int(frame.origin.y),
+                    'width': int(frame.size.width),
+                    'height': int(frame.size.height),
+                    'work_x': int(visible_frame.origin.x),
+                    'work_y': int(visible_frame.origin.y),
+                    'work_width': int(visible_frame.size.width),
+                    'work_height': int(visible_frame.size.height),
+                })
+
+            return monitors
+        except Exception as e:
+            self.logger.error(f"Failed to get monitors on macOS: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def _get_window_state_macos(self, process_id: int, timeout: float) -> Optional[WindowState]:
+        """Get window state on macOS using Quartz."""
+        try:
+            import psutil
+
+            # Get process name for matching
+            try:
+                process = psutil.Process(process_id)
+                process_name = process.name()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                self.logger.error(f"Could not access process {process_id}")
+                return None
+
+            end_time = time.time() + timeout
+
+            while time.time() < end_time:
+                # Get all windows
+                window_list = CGWindowListCopyWindowInfo(
+                    kCGWindowListOptionOnScreenOnly,
+                    kCGNullWindowID
+                )
+
+                if not window_list:
+                    time.sleep(0.2)
+                    continue
+
+                # Find window by process ID
+                for window in window_list:
+                    window_pid = window.get('kCGWindowOwnerPID', 0)
+
+                    if window_pid == process_id:
+                        # Get window bounds
+                        bounds = window.get('kCGWindowBounds', {})
+                        if not bounds:
+                            continue
+
+                        x = int(bounds.get('X', 0))
+                        y = int(bounds.get('Y', 0))
+                        width = int(bounds.get('Width', 0))
+                        height = int(bounds.get('Height', 0))
+
+                        # Skip if window has no size (likely invisible)
+                        if width == 0 or height == 0:
+                            continue
+
+                        # Get window layer (0 is normal, negative is background)
+                        layer = window.get('kCGWindowLayer', 0)
+
+                        # Check if window is on screen (basic check)
+                        is_on_screen = window.get('kCGWindowIsOnscreen', False)
+
+                        if is_on_screen and layer == 0:
+                            # Determine monitor index
+                            monitors = self._get_monitors_macos()
+                            monitor_index = 0
+                            for i, monitor in enumerate(monitors):
+                                if (x >= monitor['x'] and
+                                    y >= monitor['y'] and
+                                    x < monitor['x'] + monitor['width'] and
+                                    y < monitor['y'] + monitor['height']):
+                                    monitor_index = i
+                                    break
+
+                            self.logger.info(f"Found window for PID {process_id}: {width}x{height} at ({x}, {y})")
+
+                            return WindowState(
+                                x=x,
+                                y=y,
+                                width=width,
+                                height=height,
+                                monitor_index=monitor_index,
+                                is_maximized=False,  # macOS doesn't have true maximize
+                                is_minimized=False
+                            )
+
+                time.sleep(0.2)
+
+            self.logger.warning(f"No window found for process {process_id} ({process_name}) after {timeout}s timeout")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Failed to get window state on macOS: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def _set_window_state_macos(self, process_id: int, state: WindowState, timeout: float) -> bool:
+        """Set window state on macOS using AppleScript."""
+        try:
+            import psutil
+
+            # Get process info
+            try:
+                process = psutil.Process(process_id)
+                process_name = process.name()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                self.logger.error(f"Could not access process {process_id}")
+                return False
+
+            # Map process names to AppleScript app names
+            app_name_map = {
+                'Google Chrome': 'Google Chrome',
+                'Google Chrome Helper': 'Google Chrome',
+                'Google Chrome Helper (Renderer)': 'Google Chrome',
+                'Google Chrome Helper (GPU)': 'Google Chrome',
+                'Firefox': 'Firefox',
+                'firefox': 'Firefox',
+                'Microsoft Edge': 'Microsoft Edge',
+                'Code': 'Visual Studio Code',
+                'Code Helper': 'Visual Studio Code',
+            }
+
+            app_name = app_name_map.get(process_name, process_name)
+
+            # Wait a bit for window to appear
+            time.sleep(0.5)
+
+            # macOS uses top-left origin, but coordinates are relative to screen
+            # AppleScript expects {x, y, x+width, y+height} format
+            x1 = state.x
+            y1 = state.y
+            x2 = state.x + state.width
+            y2 = state.y + state.height
+
+            # Build AppleScript command with error handling
+            script = f'''
+            try
+                tell application "System Events"
+                    tell process "{app_name}"
+                        set frontmost to true
+                        tell window 1
+                            set position to {{{x1}, {y1}}}
+                            set size to {{{state.width}, {state.height}}}
+                        end tell
+                    end tell
+                end tell
+                return "success"
+            on error errMsg
+                return "error: " & errMsg
+            end try
+            '''
+
+            self.logger.info(f"Setting window position for '{app_name}' (PID {process_id}) to {state.width}x{state.height} at ({state.x}, {state.y})")
+
+            # Execute AppleScript
+            result = subprocess.run(
+                ['osascript', '-e', script],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            output = result.stdout.strip()
+
+            if result.returncode == 0 and output == "success":
+                self.logger.info(f"Successfully set window position for {app_name}")
+                return True
+            else:
+                error_msg = result.stderr if result.stderr else output
+                self.logger.warning(f"AppleScript failed: {error_msg}")
+                if "not allowed assistive access" in error_msg.lower() or "error" in output.lower():
+                    self.logger.warning("Accessibility permissions may be required.")
+                    self.logger.warning("Go to: System Settings > Privacy & Security > Accessibility")
+                return False
+
+        except subprocess.TimeoutExpired:
+            self.logger.error("AppleScript command timed out")
+            return False
+        except Exception as e:
+            self.logger.error(f"Failed to set window state on macOS: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
     # Linux implementation (placeholder)
 
