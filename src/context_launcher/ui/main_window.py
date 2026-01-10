@@ -17,6 +17,7 @@ from ..core.tab import Tab, TabsCollection
 from ..core.workflow_executor import WorkflowExecutor, WorkflowExecutionResult, StepStatus
 from ..core.window_manager import WindowManager, WindowState
 from ..core.backup_manager import BackupManager
+from ..core.debug_config import DebugConfig
 from ..launchers import LaunchConfig, AppType, LauncherFactory
 from ..utils.logger import get_logger
 from .session_dialog import SessionDialog
@@ -57,6 +58,32 @@ class MainWindow(QMainWindow):
         self._load_tabs()
         self._load_sessions()
         self._load_workflows()
+
+    def _show_info_message(self, title: str, message: str):
+        """Show informational message (only in debug mode).
+
+        Args:
+            title: Message box title
+            message: Message content
+        """
+        if DebugConfig.is_debug_mode():
+            QMessageBox.information(self, title, message)
+        else:
+            # Log instead of showing popup
+            self.logger.info(f"{title}: {message}")
+
+    def _show_success_message(self, title: str, message: str):
+        """Show success message (only in debug mode).
+
+        Args:
+            title: Message box title
+            message: Message content
+        """
+        if DebugConfig.is_debug_mode():
+            QMessageBox.information(self, title, message)
+        else:
+            # Log instead of showing popup
+            self.logger.info(f"SUCCESS - {title}: {message}")
 
     def _create_menu_bar(self):
         """Create application menu bar."""
@@ -707,8 +734,7 @@ class MainWindow(QMainWindow):
                     thread = threading.Thread(target=position_window, daemon=True)
                     thread.start()
 
-                QMessageBox.information(
-                    self,
+                self._show_success_message(
                     "Success",
                     f"Successfully launched {session.name}!\n\nProcess ID: {result.process_id}"
                 )
@@ -745,7 +771,7 @@ class MainWindow(QMainWindow):
                 message += f"✓ {result.successful_steps} steps succeeded\n"
                 message += f"Total time: {result.total_elapsed_ms}ms"
 
-                QMessageBox.information(self, "Workflow Complete", message)
+                self._show_success_message("Workflow Complete", message)
 
                 # Update workflow stats
                 workflow.update_launch_stats()
@@ -1190,8 +1216,7 @@ class MainWindow(QMainWindow):
             self._refresh_tab_view()
 
         status = "added to" if item_obj.metadata.favorite else "removed from"
-        QMessageBox.information(
-            self,
+        self._show_info_message(
             "Favorites",
             f"{item_obj.name} {status} favorites."
         )
@@ -1299,8 +1324,7 @@ class MainWindow(QMainWindow):
             # Save session
             self.config_manager.save_session(session.id, session.to_dict())
 
-            QMessageBox.information(
-                self,
+            self._show_success_message(
                 "Success",
                 f"Window configuration saved for {session.name}!"
             )
@@ -1325,8 +1349,7 @@ class MainWindow(QMainWindow):
             success = self.backup_manager.create_backup(Path(file_path))
 
             if success:
-                QMessageBox.information(
-                    self,
+                self._show_success_message(
                     "Backup Created",
                     f"Backup successfully created:\n{file_path}"
                 )
@@ -1362,8 +1385,7 @@ class MainWindow(QMainWindow):
                 success = self.backup_manager.restore_backup(Path(file_path), merge=False)
 
                 if success:
-                    QMessageBox.information(
-                        self,
+                    self._show_success_message(
                         "Restore Complete",
                         "Backup restored successfully!\n\nThe application will now reload."
                     )
@@ -1397,8 +1419,7 @@ class MainWindow(QMainWindow):
             success = self.backup_manager.import_from_zip(Path(file_path))
 
             if success:
-                QMessageBox.information(
-                    self,
+                self._show_success_message(
                     "Import Complete",
                     "Data imported successfully!\n\nThe application will now reload."
                 )
@@ -1440,8 +1461,7 @@ class MainWindow(QMainWindow):
             success = self.backup_manager.create_backup(Path(file_path))
 
             if success:
-                QMessageBox.information(
-                    self,
+                self._show_success_message(
                     "Export Complete",
                     f"Data exported successfully:\n{file_path}"
                 )

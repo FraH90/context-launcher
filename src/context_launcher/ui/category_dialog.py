@@ -85,13 +85,13 @@ class CategoryDialog(QDialog):
         # Dialog buttons
         button_layout = QHBoxLayout()
 
-        self.save_btn = QPushButton("Save")
-        self.save_btn.clicked.connect(self._validate_and_accept)
-        button_layout.addWidget(self.save_btn)
-
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(self.cancel_btn)
+
+        self.save_btn = QPushButton("Save")
+        self.save_btn.clicked.connect(self._validate_and_accept)
+        button_layout.addWidget(self.save_btn)
 
         layout.addLayout(button_layout)
 

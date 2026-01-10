@@ -52,17 +52,37 @@ class SessionDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
 
-        # Common fields (top section)
-        common_layout = QFormLayout()
+        # Common fields (top section) - all in one row
+        fields_layout = QHBoxLayout()
+        fields_layout.setSpacing(10)
 
+        # Name field
+        name_container = QVBoxLayout()
+        name_container.setSpacing(2)
+        name_container.setAlignment(Qt.AlignmentFlag.AlignTop)
+        name_label = QLabel("Name:")
+        name_container.addWidget(name_label)
         self.name_edit = QLineEdit()
-        common_layout.addRow("Name:", self.name_edit)
+        name_container.addWidget(self.name_edit)
+        fields_layout.addLayout(name_container, stretch=1)
 
+        # Icon field
+        icon_container = QVBoxLayout()
+        icon_container.setSpacing(2)
+        icon_container.setAlignment(Qt.AlignmentFlag.AlignTop)
+        icon_label = QLabel("Icon:")
+        icon_container.addWidget(icon_label)
         self.icon_edit = QLineEdit()
         self.icon_edit.setPlaceholderText("🌐")
-        common_layout.addRow("Icon (emoji):", self.icon_edit)
+        icon_container.addWidget(self.icon_edit)
+        fields_layout.addLayout(icon_container, stretch=1)
 
-        # Tab/Category selection
+        # Category field
+        category_container = QVBoxLayout()
+        category_container.setSpacing(2)
+        category_container.setAlignment(Qt.AlignmentFlag.AlignTop)
+        category_label = QLabel("Category:")
+        category_container.addWidget(category_label)
         self.tab_combo = QComboBox()
         if self.tabs_collection:
             sorted_tabs = sorted(self.tabs_collection.tabs, key=lambda t: t.order)
@@ -75,10 +95,16 @@ class SessionDialog(QDialog):
                     if self.tab_combo.itemData(i) == self.default_tab_id:
                         self.tab_combo.setCurrentIndex(i)
                         break
+        category_container.addWidget(self.tab_combo)
 
-        common_layout.addRow("Category:", self.tab_combo)
+        # Match the height of text fields to the combobox
+        combo_height = self.tab_combo.sizeHint().height()
+        self.name_edit.setMinimumHeight(combo_height)
+        self.icon_edit.setMinimumHeight(combo_height)
 
-        layout.addLayout(common_layout)
+        fields_layout.addLayout(category_container, stretch=1)
+
+        layout.addLayout(fields_layout)
 
         # Tabbed interface for different app types
         self.tabs = QTabWidget()
@@ -87,30 +113,22 @@ class SessionDialog(QDialog):
         self.browser_tab = self._create_browser_tab()
         self.tabs.addTab(self.browser_tab, "🌐 Browser")
 
-        # Editor tab
-        self.editor_tab = self._create_editor_tab()
-        self.tabs.addTab(self.editor_tab, "💻 Editor")
-
-        # Apps tab
-        self.apps_tab = self._create_apps_tab()
-        self.tabs.addTab(self.apps_tab, "⚙️ Apps")
-
-        # Generic tab
-        self.generic_tab = self._create_generic_tab()
-        self.tabs.addTab(self.generic_tab, "📦 Custom")
+        # Custom Apps tab (combines Editor, Apps + Custom)
+        self.custom_apps_tab = self._create_custom_apps_tab()
+        self.tabs.addTab(self.custom_apps_tab, "📦 Custom Apps")
 
         layout.addWidget(self.tabs)
 
         # Dialog buttons
         button_layout = QHBoxLayout()
 
-        self.save_btn = QPushButton("Save")
-        self.save_btn.clicked.connect(self.accept)
-        button_layout.addWidget(self.save_btn)
-
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(self.cancel_btn)
+
+        self.save_btn = QPushButton("Save")
+        self.save_btn.clicked.connect(self.accept)
+        button_layout.addWidget(self.save_btn)
 
         layout.addLayout(button_layout)
 
@@ -119,18 +137,39 @@ class SessionDialog(QDialog):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Browser selection
-        form_layout = QFormLayout()
+        # Browser and Profile in the same row
+        browser_layout = QHBoxLayout()
+        browser_layout.setSpacing(10)
 
+        # Browser field
+        browser_container = QVBoxLayout()
+        browser_container.setSpacing(2)
+        browser_container.setAlignment(Qt.AlignmentFlag.AlignTop)
+        browser_label = QLabel("Browser:")
+        browser_container.addWidget(browser_label)
         self.browser_combo = QComboBox()
         self.browser_combo.addItems(["chrome", "firefox", "edge"])
-        form_layout.addRow("Browser:", self.browser_combo)
+        self.browser_combo.setSizePolicy(
+            self.browser_combo.sizePolicy().horizontalPolicy(),
+            self.browser_combo.sizePolicy().verticalPolicy()
+        )
+        browser_container.addWidget(self.browser_combo)
+        browser_layout.addLayout(browser_container, stretch=1)
 
+        # Profile field
+        profile_container = QVBoxLayout()
+        profile_container.setSpacing(2)
+        profile_container.setAlignment(Qt.AlignmentFlag.AlignTop)
+        profile_label = QLabel("Profile:")
+        profile_container.addWidget(profile_label)
         self.browser_profile_edit = QLineEdit()
         self.browser_profile_edit.setPlaceholderText("Leave empty for default profile")
-        form_layout.addRow("Profile:", self.browser_profile_edit)
+        # Match the height of the combobox
+        self.browser_profile_edit.setMinimumHeight(self.browser_combo.sizeHint().height())
+        profile_container.addWidget(self.browser_profile_edit)
+        browser_layout.addLayout(profile_container, stretch=1)
 
-        layout.addLayout(form_layout)
+        layout.addLayout(browser_layout)
 
         # Tabs section
         tabs_label = QLabel("Tabs:")
@@ -191,32 +230,75 @@ class SessionDialog(QDialog):
 
         return widget
 
-    def _create_apps_tab(self) -> QWidget:
-        """Create apps configuration tab."""
+    def _create_custom_apps_tab(self) -> QWidget:
+        """Create custom apps configuration tab (combines Apps + Custom)."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        form_layout = QFormLayout()
+        # Top section: Choose between known apps or custom executable
+        choice_label = QLabel("Select a known application or specify a custom executable:")
+        choice_label.setWordWrap(True)
+        layout.addWidget(choice_label)
 
-        # App selection
+        # Horizontal layout for the two mutually exclusive options
+        main_layout = QHBoxLayout()
+
+        # LEFT SIDE: Known apps dropdown
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+
+        known_apps_label = QLabel("<b>Known Applications</b>")
+        left_layout.addWidget(known_apps_label)
+
         self.app_combo = QComboBox()
-        self.app_combo.addItems(["slack", "spotify"])
-        form_layout.addRow("Application:", self.app_combo)
+        self.app_combo.addItem("Select an app...", "")  # Default empty option
+        self.app_combo.addItem("VS Code", "vscode")
+        self.app_combo.addItem("Slack", "slack")
+        self.app_combo.addItem("Spotify", "spotify")
+        self.app_combo.currentIndexChanged.connect(self._on_app_combo_changed)
+        left_layout.addWidget(self.app_combo)
 
-        layout.addLayout(form_layout)
+        # Workspace field (shown only for VS Code)
+        workspace_container = QHBoxLayout()
+        self.workspace_edit = QLineEdit()
+        self.workspace_edit.setPlaceholderText("Workspace or folder path")
+        self.workspace_edit.setVisible(False)
+        workspace_container.addWidget(self.workspace_edit)
+
+        self.browse_workspace_btn = QPushButton("Browse...")
+        self.browse_workspace_btn.clicked.connect(self._browse_workspace)
+        self.browse_workspace_btn.setVisible(False)
+        workspace_container.addWidget(self.browse_workspace_btn)
+
+        left_layout.addLayout(workspace_container)
 
         info_label = QLabel("Selected app will be auto-detected and launched.")
         info_label.setWordWrap(True)
-        layout.addWidget(info_label)
+        info_label.setStyleSheet("color: gray; font-size: 10pt;")
+        left_layout.addWidget(info_label)
 
-        layout.addStretch()
+        left_layout.addStretch()
 
-        return widget
+        main_layout.addWidget(left_widget, stretch=1)
 
-    def _create_generic_tab(self) -> QWidget:
-        """Create generic/custom app configuration tab."""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
+        # CENTER: OR separator
+        separator_widget = QWidget()
+        separator_layout = QVBoxLayout(separator_widget)
+        separator_layout.setContentsMargins(10, 0, 10, 0)
+        or_label = QLabel("<b>OR</b>")
+        or_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        separator_layout.addWidget(or_label)
+        separator_layout.addStretch()
+        main_layout.addWidget(separator_widget)
+
+        # RIGHT SIDE: Custom executable fields
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+
+        custom_label = QLabel("<b>Custom Executable</b>")
+        right_layout.addWidget(custom_label)
 
         form_layout = QFormLayout()
 
@@ -224,6 +306,7 @@ class SessionDialog(QDialog):
         exe_layout = QHBoxLayout()
         self.executable_edit = QLineEdit()
         self.executable_edit.setPlaceholderText("Path to executable")
+        self.executable_edit.textChanged.connect(self._on_executable_changed)
         exe_layout.addWidget(self.executable_edit)
 
         self.browse_exe_btn = QPushButton("Browse...")
@@ -249,10 +332,37 @@ class SessionDialog(QDialog):
 
         form_layout.addRow("Working Dir:", workdir_layout)
 
-        layout.addLayout(form_layout)
-        layout.addStretch()
+        right_layout.addLayout(form_layout)
+        right_layout.addStretch()
+
+        main_layout.addWidget(right_widget, stretch=1)
+
+        layout.addLayout(main_layout)
 
         return widget
+
+    def _on_app_combo_changed(self, index: int):
+        """Handle app combo selection - clear custom executable if app is selected."""
+        selected_app = self.app_combo.currentData()
+
+        if selected_app:  # If a known app is selected
+            self.executable_edit.clear()
+            self.arguments_edit.clear()
+            self.workdir_edit.clear()
+
+            # Show workspace field only for VS Code
+            is_vscode = selected_app == "vscode"
+            self.workspace_edit.setVisible(is_vscode)
+            self.browse_workspace_btn.setVisible(is_vscode)
+        else:
+            # No app selected, hide workspace field
+            self.workspace_edit.setVisible(False)
+            self.browse_workspace_btn.setVisible(False)
+
+    def _on_executable_changed(self, text: str):
+        """Handle executable path change - clear app combo if custom path is entered."""
+        if text.strip():  # If custom path is entered
+            self.app_combo.setCurrentIndex(0)  # Reset to "Select an app..."
 
     def _browse_workspace(self):
         """Browse for workspace/folder."""
@@ -366,24 +476,21 @@ class SessionDialog(QDialog):
                     item.setData(Qt.ItemDataRole.UserRole, tab_data)
                     self.tabs_list.addItem(item)
 
-        elif app_type == "editor":
-            self.tabs.setCurrentIndex(1)  # Editor tab
+        elif app_type == "editor" or app_name in ["vscode", "slack", "spotify"]:
+            self.tabs.setCurrentIndex(1)  # Custom Apps tab
 
-            index = self.editor_combo.findText(app_name)
-            if index >= 0:
-                self.editor_combo.setCurrentIndex(index)
+            # Find and select the app in combo
+            for i in range(self.app_combo.count()):
+                if self.app_combo.itemData(i) == app_name:
+                    self.app_combo.setCurrentIndex(i)
+                    break
 
-            self.workspace_edit.setText(params.get('workspace', '') or params.get('folder', ''))
-
-        elif app_name in ["slack", "spotify"]:
-            self.tabs.setCurrentIndex(2)  # Apps tab
-
-            index = self.app_combo.findText(app_name)
-            if index >= 0:
-                self.app_combo.setCurrentIndex(index)
+            # Load workspace for VS Code
+            if app_name == "vscode":
+                self.workspace_edit.setText(params.get('workspace', '') or params.get('folder', ''))
 
         else:  # Generic
-            self.tabs.setCurrentIndex(3)  # Generic tab
+            self.tabs.setCurrentIndex(1)  # Custom Apps tab
 
             self.executable_edit.setText(params.get('executable_path', ''))
 
@@ -414,12 +521,10 @@ class SessionDialog(QDialog):
 
         if current_tab_index == 0:  # Browser
             return self._create_browser_session(name, icon)
-        elif current_tab_index == 1:  # Editor
-            return self._create_editor_session(name, icon)
-        elif current_tab_index == 2:  # Apps
-            return self._create_app_session(name, icon)
-        else:  # Generic
-            return self._create_generic_session(name, icon)
+        elif current_tab_index == 1:  # Custom Apps
+            return self._create_custom_app_session(name, icon)
+        else:
+            return None
 
     def _create_browser_session(self, name: str, icon: str) -> Optional[Session]:
         """Create browser session from inputs."""
@@ -483,63 +588,93 @@ class SessionDialog(QDialog):
                 tab_id=tab_id
             )
 
-    def _create_app_session(self, name: str, icon: str) -> Optional[Session]:
-        """Create app session from inputs."""
-        app = self.app_combo.currentText()
-
+    def _create_custom_app_session(self, name: str, icon: str) -> Optional[Session]:
+        """Create custom app session from inputs (known app or custom executable)."""
         # Get selected tab_id
         tab_id = self.tab_combo.currentData() or "uncategorized"
 
-        if self.editing and self.session:
-            # Update existing session
-            self.session.name = name
-            self.session.icon = icon
-            self.session.tab_id = tab_id
-            self.session.launch_config.app_name = app
-            return self.session
-        else:
-            return create_generic_app_session(
-                name=name,
-                app_name=app,
-                executable_path="",  # Will be auto-detected
-                icon=icon,
-                tab_id=tab_id
-            )
-
-    def _create_generic_session(self, name: str, icon: str) -> Optional[Session]:
-        """Create generic session from inputs."""
+        # Check if a known app is selected
+        selected_app_data = self.app_combo.currentData()
         executable = self.executable_edit.text().strip()
 
-        # Get selected tab_id
-        tab_id = self.tab_combo.currentData() or "uncategorized"
+        if selected_app_data:
+            # Known app selected (vscode, slack, spotify)
+            app = selected_app_data
 
-        if not executable:
-            QMessageBox.warning(self, "Invalid Input", "Executable path is required.")
-            return None
+            # VS Code requires workspace
+            if app == "vscode":
+                workspace = self.workspace_edit.text().strip()
+                if not workspace:
+                    QMessageBox.warning(self, "Invalid Input", "Workspace/Folder path is required for VS Code.")
+                    return None
 
-        args_text = self.arguments_edit.text().strip()
-        arguments = args_text.split() if args_text else []
+                if self.editing and self.session:
+                    # Update existing session
+                    self.session.name = name
+                    self.session.icon = icon
+                    self.session.tab_id = tab_id
+                    self.session.launch_config.app_name = app
+                    self.session.launch_config.parameters['workspace'] = workspace
+                    return self.session
+                else:
+                    return create_vscode_session(
+                        name=name,
+                        workspace_path=workspace,
+                        icon=icon,
+                        tab_id=tab_id
+                    )
+            else:
+                # Slack, Spotify, etc.
+                if self.editing and self.session:
+                    # Update existing session
+                    self.session.name = name
+                    self.session.icon = icon
+                    self.session.tab_id = tab_id
+                    self.session.launch_config.app_name = app
+                    return self.session
+                else:
+                    return create_generic_app_session(
+                        name=name,
+                        app_name=app,
+                        executable_path="",  # Will be auto-detected
+                        icon=icon,
+                        tab_id=tab_id
+                    )
 
-        workdir = self.workdir_edit.text().strip() or None
+        elif executable:
+            # Custom executable path provided
+            args_text = self.arguments_edit.text().strip()
+            arguments = args_text.split() if args_text else []
 
-        if self.editing and self.session:
-            # Update existing session
-            self.session.name = name
-            self.session.icon = icon
-            self.session.tab_id = tab_id
-            self.session.launch_config.parameters['executable_path'] = executable
-            self.session.launch_config.parameters['arguments'] = arguments
-            self.session.launch_config.parameters['working_directory'] = workdir
-            return self.session
+            workdir = self.workdir_edit.text().strip() or None
+
+            if self.editing and self.session:
+                # Update existing session
+                self.session.name = name
+                self.session.icon = icon
+                self.session.tab_id = tab_id
+                self.session.launch_config.parameters['executable_path'] = executable
+                self.session.launch_config.parameters['arguments'] = arguments
+                self.session.launch_config.parameters['working_directory'] = workdir
+                return self.session
+            else:
+                session = create_generic_app_session(
+                    name=name,
+                    app_name="generic",
+                    executable_path=executable,
+                    arguments=arguments,
+                    icon=icon,
+                    tab_id=tab_id
+                )
+                if workdir:
+                    session.launch_config.parameters['working_directory'] = workdir
+                return session
+
         else:
-            session = create_generic_app_session(
-                name=name,
-                app_name="generic",
-                executable_path=executable,
-                arguments=arguments,
-                icon=icon,
-                tab_id=tab_id
+            # Neither known app nor custom executable provided
+            QMessageBox.warning(
+                self,
+                "Invalid Input",
+                "Please select a known application or provide a custom executable path."
             )
-            if workdir:
-                session.launch_config.parameters['working_directory'] = workdir
-            return session
+            return None
