@@ -54,21 +54,19 @@ class LauncherFactory:
 
         Returns:
             Launcher instance for the specified app
-
-        Raises:
-            ValueError: If launcher for app_name is not registered
         """
         app_name = launch_config.app_name.lower()
 
+        # Check if we have a specific launcher registered
         launcher_class = cls._registry.get(app_name)
 
-        if not launcher_class:
-            raise ValueError(
-                f"No launcher registered for app '{app_name}'. "
-                f"Available launchers: {', '.join(cls._registry.keys())}"
-            )
-
-        return launcher_class(launch_config)
+        if launcher_class:
+            return launcher_class(launch_config)
+        
+        # For any unregistered app_name, use the GenericAppLauncher
+        # The GenericAppLauncher will use the app_registry to find the path
+        # or allow launching via 'open -a' on macOS
+        return GenericAppLauncher(launch_config)
 
     @classmethod
     def get_available_launchers(cls) -> Dict[str, Type[BaseLauncher]]:

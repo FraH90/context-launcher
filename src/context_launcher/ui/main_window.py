@@ -372,23 +372,15 @@ class MainWindow(QMainWindow):
         # Determine icon to use
         icon_set = False
         if item_type == 'session':
-            # Check if icon field specifies app icon (e.g., "app:chrome")
-            if item_obj.icon.startswith("app:"):
-                app_name = item_obj.icon[4:]  # Remove "app:" prefix
-                icon_manager = get_icon_manager()
-                icon = icon_manager.get_app_icon(app_name)
-                if icon and not icon.isNull():
-                    tree_item.setIcon(0, icon)
-                    icon_set = True
-            else:
-                # Try to auto-detect app icon
-                icon_manager = get_icon_manager()
-                icon = icon_manager.get_icon_for_session(item_obj)
-                if icon and not icon.isNull():
-                    tree_item.setIcon(0, icon)
-                    icon_set = True
+            icon_manager = get_icon_manager()
+            
+            # Try to get the app icon
+            icon = icon_manager.get_icon_for_session(item_obj)
+            if icon and not icon.isNull():
+                tree_item.setIcon(0, icon)
+                icon_set = True
 
-            # Format text without icon if we set an icon widget
+            # Format text - use fallback icon in text if no app icon
             display_text = self._format_session_text(item_obj, include_icon=not icon_set)
         else:
             display_text = self._format_workflow_text(item_obj, include_icon=True)
@@ -417,7 +409,12 @@ class MainWindow(QMainWindow):
         app_name = session.launch_config.app_name
 
         # Build the prefix (icon or empty)
-        prefix = f"{session.icon} " if include_icon and not session.icon.startswith("app:") else ""
+        # Use fallback_icon when include_icon is True (no app icon loaded)
+        prefix = ""
+        if include_icon:
+            icon_manager = get_icon_manager()
+            fallback = icon_manager.get_fallback_icon(session)
+            prefix = f"{fallback} "
 
         if app_type == "browser":
             tabs = session.launch_config.parameters.get('tabs', [])
@@ -1836,6 +1833,18 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             # Settings were saved, apply any changes that need immediate effect
             new_prefs = dialog.get_preferences()
+
+            # Check if reset was performed (needs restart/reload)
+            if new_prefs.get('_needs_restart'):
+                # Reload all data
+                self._load_tabs()
+                self._load_sessions()
+                self._load_workflows()
+                if self.current_view_mode == "tree":
+                    self._refresh_tree()
+                else:
+                    self._refresh_tab_view()
+                return
 
             # Apply theme if changed
             new_theme = new_prefs.get('ui', {}).get('theme', 'system')

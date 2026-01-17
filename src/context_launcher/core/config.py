@@ -368,13 +368,33 @@ class ConfigManager:
             ]
         }
 
+    def _get_platform_template_name(self) -> str:
+        """Get the platform-specific template suffix.
+        
+        Returns:
+            Platform suffix (e.g., 'macos', 'windows')
+        """
+        if sys.platform == 'darwin':
+            return 'macos'
+        elif sys.platform == 'win32':
+            return 'windows'
+        else:
+            return 'linux'
+
     def _create_default_tabs(self) -> Dict[str, Any]:
-        """Create default tabs from template file.
+        """Create default tabs from platform-specific template file.
 
         Returns:
             Default tabs dictionary
         """
-        template_path = Path(__file__).parent.parent / "templates" / "default_tabs.json"
+        templates_dir = Path(__file__).parent.parent / "templates"
+        platform_name = self._get_platform_template_name()
+        
+        # Try platform-specific template first
+        platform_template = templates_dir / f"default_tabs_{platform_name}.json"
+        generic_template = templates_dir / "default_tabs.json"
+        
+        template_path = platform_template if platform_template.exists() else generic_template
 
         if template_path.exists():
             with open(template_path, 'r', encoding='utf-8') as f:
@@ -386,12 +406,19 @@ class ConfigManager:
             return tabs_collection.to_dict()
 
     def load_default_sessions_template(self) -> List[Dict[str, Any]]:
-        """Load default sessions from template file.
+        """Load default sessions from platform-specific template file.
 
         Returns:
             List of session dictionaries
         """
-        template_path = Path(__file__).parent.parent / "templates" / "default_sessions.json"
+        templates_dir = Path(__file__).parent.parent / "templates"
+        platform_name = self._get_platform_template_name()
+        
+        # Try platform-specific template first
+        platform_template = templates_dir / f"default_sessions_{platform_name}.json"
+        generic_template = templates_dir / "default_sessions.json"
+        
+        template_path = platform_template if platform_template.exists() else generic_template
 
         if template_path.exists():
             with open(template_path, 'r', encoding='utf-8') as f:
@@ -400,3 +427,71 @@ class ConfigManager:
         else:
             # Return empty list if no template
             return []
+
+    def reset_to_defaults(self, backup_first: bool = True) -> Optional[Path]:
+        """Reset all user data to defaults.
+        
+        Args:
+            backup_first: Whether to create a backup before resetting
+            
+        Returns:
+            Path to backup file if created, None otherwise
+        """
+        import shutil
+        from datetime import datetime
+        
+        backup_path = None
+        
+        if backup_first:
+            # Create backup
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = self.data_dir / f"backup_before_reset_{timestamp}.zip"
+            
+            try:
+                # Create ZIP backup of data directory
+                import zipfile
+                with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    # Backup tabs.json
+                    if self.tabs_path.exists():
+                        zipf.write(self.tabs_path, "tabs.json")
+                    
+                    # Backup sessions
+                    for session_file in self.sessions_dir.glob('*.json'):
+                        zipf.write(session_file, f"sessions/{session_file.name}")
+                    
+                    # Backup workflows
+                    for workflow_file in self.workflows_dir.glob('*.json'):
+                        zipf.write(workflow_file, f"workflows/{workflow_file.name}")
+                    
+                    # Backup user preferences
+                    if self.user_prefs_path.exists():
+                        zipf.write(self.user_prefs_path, "user_preferences.json")
+            except Exception as e:
+                # If backup fails, don't proceed with reset
+                raise RuntimeError(f"Failed to create backup: {e}")
+        
+        # Delete existing data
+        if self.tabs_path.exists():
+            self.tabs_path.unlink()
+        
+        # Delete all sessions
+        for session_file in self.sessions_dir.glob('*.json'):
+            session_file.unlink()
+        
+        # Delete all workflows
+        for workflow_file in self.workflows_dir.glob('*.json'):
+            workflow_file.unlink()
+        
+        # Clear caches
+        self._app_settings = None
+        self._user_prefs = None
+        
+        return backup_path
+
+    def get_backup_files(self) -> List[Path]:
+        """Get list of backup files in data directory.
+        
+        Returns:
+            List of backup file paths
+        """
+        return sorted(self.data_dir.glob('backup_*.zip'), reverse=True)

@@ -55,7 +55,8 @@ class Session(BaseModel):
     version: str = "3.0"
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
-    icon: str = "🌐"
+    icon: str = "🌐"  # Can be "app:appname" for app icon, or emoji for direct icon
+    fallback_icon: str = "🌐"  # Emoji to use if app icon can't be loaded
     description: str = ""
     tab_id: str = "uncategorized"  # References the tab this session belongs to
     type: SessionType = SessionType.SINGLE_APP

@@ -1,0 +1,335 @@
+{
+  "version": "3.0",
+  "platform": "win32",
+  "sessions": [
+    {
+      "name": "Chrome",
+      "icon": "app:chrome",
+      "fallback_icon": "🌐",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "browser",
+        "app_name": "chrome",
+        "parameters": {
+          "executable_path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+          "tabs": [],
+          "profile": ""
+        }
+      }
+    },
+    {
+      "name": "Firefox",
+      "icon": "app:firefox",
+      "fallback_icon": "🦊",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "browser",
+        "app_name": "firefox",
+        "parameters": {
+          "executable_path": "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+          "tabs": [],
+          "profile": ""
+        }
+      }
+    },
+    {
+      "name": "Microsoft Edge",
+      "icon": "app:edge",
+      "fallback_icon": "🌐",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "browser",
+        "app_name": "edge",
+        "parameters": {
+          "executable_path": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+          "tabs": [],
+          "profile": ""
+        }
+      }
+    },
+    {
+      "name": "Visual Studio Code",
+      "icon": "app:vscode",
+      "fallback_icon": "💻",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "editor",
+        "app_name": "vscode",
+        "parameters": {
+          "executable_path": "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe"
+        }
+      }
+    },
+    {
+      "name": "Sublime Text",
+      "icon": "app:sublime",
+      "fallback_icon": "📝",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "sublime",
+        "parameters": {
+          "executable_path": "C:\\Program Files\\Sublime Text\\sublime_text.exe"
+        }
+      }
+    },
+    {
+      "name": "Obsidian",
+      "icon": "app:obsidian",
+      "fallback_icon": "🗒️",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "obsidian",
+        "parameters": {
+          "executable_path": "%LOCALAPPDATA%\\Obsidian\\Obsidian.exe"
+        }
+      }
+    },
+    {
+      "name": "Spotify",
+      "icon": "app:spotify",
+      "fallback_icon": "🎵",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "spotify",
+        "parameters": {
+          "executable_path": "%APPDATA%\\Spotify\\Spotify.exe"
+        }
+      }
+    },
+    {
+      "name": "Docker",
+      "icon": "app:docker",
+      "fallback_icon": "🐳",
+      "tab_id": "development",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "docker",
+        "parameters": {
+          "executable_path": "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe"
+        }
+      }
+    },
+    {
+      "name": "Discord",
+      "icon": "app:discord",
+      "fallback_icon": "💬",
+      "tab_id": "communication",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "discord",
+        "parameters": {
+          "executable_path": "%LOCALAPPDATA%\\Discord\\Update.exe",
+          "arguments": ["--processStart", "Discord.exe"]
+        }
+      }
+    },
+    {
+      "name": "Telegram",
+      "icon": "app:telegram",
+      "fallback_icon": "✈️",
+      "tab_id": "communication",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "telegram",
+        "parameters": {
+          "executable_path": "%APPDATA%\\Telegram Desktop\\Telegram.exe"
+        }
+      }
+    },
+    {
+      "name": "WhatsApp",
+      "icon": "app:whatsapp",
+      "fallback_icon": "💬",
+      "tab_id": "communication",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "whatsapp",
+        "parameters": {
+          "executable_path": "%LOCALAPPDATA%\\WhatsApp\\WhatsApp.exe"
+        }
+      }
+    },
+    {
+      "name": "Slack",
+      "icon": "app:slack",
+      "fallback_icon": "💼",
+      "tab_id": "communication",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "slack",
+        "parameters": {
+          "executable_path": "%LOCALAPPDATA%\\slack\\slack.exe"
+        }
+      }
+    },
+    {
+      "name": "Steam",
+      "icon": "app:steam",
+      "fallback_icon": "🎮",
+      "tab_id": "entertainment",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "steam",
+        "parameters": {
+          "executable_path": "C:\\Program Files (x86)\\Steam\\steam.exe"
+        }
+      }
+    },
+    {
+      "name": "VLC",
+      "icon": "app:vlc",
+      "fallback_icon": "🎬",
+      "tab_id": "entertainment",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "vlc",
+        "parameters": {
+          "executable_path": "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe"
+        }
+      }
+    },
+    {
+      "name": "Bitwarden",
+      "icon": "app:bitwarden",
+      "fallback_icon": "🔐",
+      "tab_id": "productivity",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "bitwarden",
+        "parameters": {
+          "executable_path": "%LOCALAPPDATA%\\Programs\\Bitwarden\\Bitwarden.exe"
+        }
+      }
+    },
+    {
+      "name": "Raindrop.io",
+      "icon": "app:raindrop",
+      "fallback_icon": "💧",
+      "tab_id": "productivity",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "raindrop",
+        "parameters": {
+          "executable_path": "%LOCALAPPDATA%\\Programs\\Raindrop.io\\Raindrop.io.exe"
+        }
+      }
+    },
+    {
+      "name": "TradingView",
+      "icon": "app:tradingview",
+      "fallback_icon": "📈",
+      "tab_id": "productivity",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "tradingview",
+        "parameters": {
+          "executable_path": "%LOCALAPPDATA%\\Programs\\TradingView\\TradingView.exe"
+        }
+      }
+    },
+    {
+      "name": "VNC Viewer",
+      "icon": "app:vncviewer",
+      "fallback_icon": "🖥️",
+      "tab_id": "productivity",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "vncviewer",
+        "parameters": {
+          "executable_path": "C:\\Program Files\\RealVNC\\VNC Viewer\\vncviewer.exe"
+        }
+      }
+    },
+    {
+      "name": "Syncthing",
+      "icon": "app:syncthing",
+      "fallback_icon": "🔄",
+      "tab_id": "productivity",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "syncthing",
+        "parameters": {
+          "executable_path": "C:\\Program Files\\Syncthing\\syncthing.exe"
+        }
+      }
+    },
+    {
+      "name": "Ableton Live",
+      "icon": "app:ableton",
+      "fallback_icon": "🎹",
+      "tab_id": "music",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "ableton",
+        "parameters": {
+          "executable_path": "C:\\ProgramData\\Ableton\\Live 12 Suite\\Program\\Ableton Live 12 Suite.exe"
+        }
+      }
+    },
+    {
+      "name": "iLok License Manager",
+      "icon": "app:ilok",
+      "fallback_icon": "🔑",
+      "tab_id": "music",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "ilok",
+        "parameters": {
+          "executable_path": "C:\\Program Files\\PACE\\iLok License Manager\\iLok License Manager.exe"
+        }
+      }
+    },
+    {
+      "name": "ChatGPT",
+      "icon": "app:chatgpt",
+      "fallback_icon": "🤖",
+      "tab_id": "ai",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "chatgpt",
+        "parameters": {
+          "executable_path": "%LOCALAPPDATA%\\Programs\\ChatGPT\\ChatGPT.exe"
+        }
+      }
+    },
+    {
+      "name": "Command Prompt",
+      "icon": "app:terminal",
+      "fallback_icon": "🖥️",
+      "tab_id": "development",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "terminal",
+        "parameters": {
+          "executable_path": "C:\\Windows\\System32\\cmd.exe"
+        }
+      }
+    }
+  ]
+}

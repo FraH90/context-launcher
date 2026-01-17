@@ -1,0 +1,722 @@
+{
+  "version": "3.0",
+  "platform": "darwin",
+  "sessions": [
+    {
+      "name": "Chrome",
+      "icon": "app:chrome",
+      "fallback_icon": "🌐",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "browser",
+        "app_name": "chrome",
+        "parameters": {
+          "executable_path": "/Applications/Google Chrome.app",
+          "tabs": [],
+          "profile": ""
+        }
+      }
+    },
+    {
+      "name": "Sublime Text",
+      "icon": "app:sublime",
+      "fallback_icon": "📝",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "sublime",
+        "parameters": {
+          "executable_path": "/Applications/Sublime Text.app"
+        }
+      }
+    },
+    {
+      "name": "Obsidian",
+      "icon": "app:obsidian",
+      "fallback_icon": "🗒️",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "obsidian",
+        "parameters": {
+          "executable_path": "/Applications/Obsidian.app"
+        }
+      }
+    },
+    {
+      "name": "iTerm",
+      "icon": "app:iterm",
+      "fallback_icon": "🖥️",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "iterm",
+        "parameters": {
+          "executable_path": "/Applications/iTerm.app"
+        }
+      }
+    },
+    {
+      "name": "Spotify",
+      "icon": "app:spotify",
+      "fallback_icon": "🎵",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "spotify",
+        "parameters": {
+          "executable_path": "/Applications/Spotify.app"
+        }
+      }
+    },
+    {
+      "name": "Notability",
+      "icon": "app:notability",
+      "fallback_icon": "📓",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "notability",
+        "parameters": {
+          "executable_path": "/Applications/Notability.app"
+        }
+      }
+    },
+    {
+      "name": "Visual Studio Code",
+      "icon": "app:vscode",
+      "fallback_icon": "💻",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "editor",
+        "app_name": "vscode",
+        "parameters": {
+          "executable_path": "/Applications/Visual Studio Code.app"
+        }
+      }
+    },
+    {
+      "name": "ChatGPT",
+      "icon": "app:chatgpt",
+      "fallback_icon": "🤖",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "chatgpt",
+        "parameters": {
+          "executable_path": "/Applications/ChatGPT.app"
+        }
+      }
+    },
+    {
+      "name": "Freeform",
+      "icon": "app:freeform",
+      "fallback_icon": "🎨",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "freeform",
+        "parameters": {
+          "executable_path": "/Applications/Freeform.app"
+        }
+      }
+    },
+    {
+      "name": "WhatsApp",
+      "icon": "app:whatsapp",
+      "fallback_icon": "💬",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "whatsapp",
+        "parameters": {
+          "executable_path": "/Applications/WhatsApp.app"
+        }
+      }
+    },
+    {
+      "name": "Microsoft Teams",
+      "icon": "app:teams",
+      "fallback_icon": "👥",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "teams",
+        "parameters": {
+          "executable_path": "/Applications/Microsoft Teams.app"
+        }
+      }
+    },
+    {
+      "name": "VLC",
+      "icon": "app:vlc",
+      "fallback_icon": "🎬",
+      "tab_id": "dock",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "vlc",
+        "parameters": {
+          "executable_path": "/Applications/VLC.app"
+        }
+      }
+    },
+    {
+      "name": "Perplexity",
+      "icon": "app:perplexity",
+      "fallback_icon": "🔍",
+      "tab_id": "ai",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "perplexity",
+        "parameters": {
+          "executable_path": "/Applications/Perplexity.app"
+        }
+      }
+    },
+    {
+      "name": "ChatGPT",
+      "icon": "app:chatgpt",
+      "fallback_icon": "🤖",
+      "tab_id": "ai",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "chatgpt",
+        "parameters": {
+          "executable_path": "/Applications/ChatGPT.app"
+        }
+      }
+    },
+    {
+      "name": "Docker",
+      "icon": "app:docker",
+      "fallback_icon": "🐳",
+      "tab_id": "development",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "docker",
+        "parameters": {
+          "executable_path": "/Applications/Docker.app"
+        }
+      }
+    },
+    {
+      "name": "Visual Studio Code",
+      "icon": "app:vscode",
+      "fallback_icon": "💻",
+      "tab_id": "development",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "editor",
+        "app_name": "vscode",
+        "parameters": {
+          "executable_path": "/Applications/Visual Studio Code.app"
+        }
+      }
+    },
+    {
+      "name": "Ableton Live",
+      "icon": "app:ableton",
+      "fallback_icon": "🎹",
+      "tab_id": "music",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "ableton",
+        "parameters": {
+          "executable_path": "/Applications/Ableton Live 12 Suite.app"
+        }
+      }
+    },
+    {
+      "name": "iLok License Manager",
+      "icon": "app:ilok",
+      "fallback_icon": "🔑",
+      "tab_id": "music",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "ilok",
+        "parameters": {
+          "executable_path": "/Applications/iLok License Manager.app"
+        }
+      }
+    },
+    {
+      "name": "Logic Pro",
+      "icon": "app:logic",
+      "fallback_icon": "🎼",
+      "tab_id": "music",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "logic",
+        "parameters": {
+          "executable_path": "/Applications/Logic Pro.app"
+        }
+      }
+    },
+    {
+      "name": "Model D",
+      "icon": "app:modeld",
+      "fallback_icon": "🎛️",
+      "tab_id": "music",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "modeld",
+        "parameters": {
+          "executable_path": "/Applications/Model D.app"
+        }
+      }
+    },
+    {
+      "name": "Prime Video",
+      "icon": "app:primevideo",
+      "fallback_icon": "📺",
+      "tab_id": "entertainment",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "primevideo",
+        "parameters": {
+          "executable_path": "/Applications/Prime Video.app"
+        }
+      }
+    },
+    {
+      "name": "Steam",
+      "icon": "app:steam",
+      "fallback_icon": "🎮",
+      "tab_id": "entertainment",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "steam",
+        "parameters": {
+          "executable_path": "/Applications/Steam.app"
+        }
+      }
+    },
+    {
+      "name": "Photos",
+      "icon": "app:photos",
+      "fallback_icon": "🖼️",
+      "tab_id": "entertainment",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "photos",
+        "parameters": {
+          "executable_path": "/System/Applications/Photos.app"
+        }
+      }
+    },
+    {
+      "name": "VLC",
+      "icon": "app:vlc",
+      "fallback_icon": "🎬",
+      "tab_id": "entertainment",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "vlc",
+        "parameters": {
+          "executable_path": "/Applications/VLC.app"
+        }
+      }
+    },
+    {
+      "name": "Discord",
+      "icon": "app:discord",
+      "fallback_icon": "💬",
+      "tab_id": "communication",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "discord",
+        "parameters": {
+          "executable_path": "/Applications/Discord.app"
+        }
+      }
+    },
+    {
+      "name": "Telegram",
+      "icon": "app:telegram",
+      "fallback_icon": "✈️",
+      "tab_id": "communication",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "telegram",
+        "parameters": {
+          "executable_path": "/Applications/Telegram.app"
+        }
+      }
+    },
+    {
+      "name": "Bitwarden",
+      "icon": "app:bitwarden",
+      "fallback_icon": "🔐",
+      "tab_id": "productivity",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "bitwarden",
+        "parameters": {
+          "executable_path": "/Applications/Bitwarden.app"
+        }
+      }
+    },
+    {
+      "name": "Google Drive",
+      "icon": "app:googledrive",
+      "fallback_icon": "☁️",
+      "tab_id": "productivity",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "googledrive",
+        "parameters": {
+          "executable_path": "/Applications/Google Drive.app"
+        }
+      }
+    },
+    {
+      "name": "HeatMap",
+      "icon": "app:heatmap",
+      "fallback_icon": "🗺️",
+      "tab_id": "productivity",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "heatmap",
+        "parameters": {
+          "executable_path": "/Applications/HeatMap.app"
+        }
+      }
+    },
+    {
+      "name": "Raindrop.io",
+      "icon": "app:raindrop",
+      "fallback_icon": "💧",
+      "tab_id": "productivity",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "raindrop",
+        "parameters": {
+          "executable_path": "/Applications/Raindrop.io.app"
+        }
+      }
+    },
+    {
+      "name": "Syncthing",
+      "icon": "app:syncthing",
+      "fallback_icon": "🔄",
+      "tab_id": "productivity",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "syncthing",
+        "parameters": {
+          "executable_path": "/Applications/Syncthing.app"
+        }
+      }
+    },
+    {
+      "name": "TradingView",
+      "icon": "app:tradingview",
+      "fallback_icon": "📈",
+      "tab_id": "productivity",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "tradingview",
+        "parameters": {
+          "executable_path": "/Applications/TradingView.app"
+        }
+      }
+    },
+    {
+      "name": "VNC Viewer",
+      "icon": "app:vncviewer",
+      "fallback_icon": "🖥️",
+      "tab_id": "productivity",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "vncviewer",
+        "parameters": {
+          "executable_path": "/Applications/VNC Viewer.app"
+        }
+      }
+    },
+    {
+      "name": "Calm",
+      "icon": "app:calm",
+      "fallback_icon": "🌊",
+      "tab_id": "wellbeing",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "calm",
+        "parameters": {
+          "executable_path": "/Applications/Calm.app"
+        }
+      }
+    },
+    {
+      "name": "Journal",
+      "icon": "app:journal",
+      "fallback_icon": "📓",
+      "tab_id": "wellbeing",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "journal",
+        "parameters": {
+          "executable_path": "/Applications/Journal.app"
+        }
+      }
+    },
+    {
+      "name": "App Store",
+      "icon": "app:appstore",
+      "fallback_icon": "🍎",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "appstore",
+        "parameters": {
+          "executable_path": "/System/Applications/App Store.app"
+        }
+      }
+    },
+    {
+      "name": "Find My",
+      "icon": "app:findmy",
+      "fallback_icon": "📍",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "findmy",
+        "parameters": {
+          "executable_path": "/System/Applications/Find My.app"
+        }
+      }
+    },
+    {
+      "name": "Books",
+      "icon": "app:books",
+      "fallback_icon": "📚",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "books",
+        "parameters": {
+          "executable_path": "/System/Applications/Books.app"
+        }
+      }
+    },
+    {
+      "name": "Contacts",
+      "icon": "app:contacts",
+      "fallback_icon": "👥",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "contacts",
+        "parameters": {
+          "executable_path": "/System/Applications/Contacts.app"
+        }
+      }
+    },
+    {
+      "name": "Maps",
+      "icon": "app:maps",
+      "fallback_icon": "🗺️",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "maps",
+        "parameters": {
+          "executable_path": "/System/Applications/Maps.app"
+        }
+      }
+    },
+    {
+      "name": "Messages",
+      "icon": "app:messages",
+      "fallback_icon": "💬",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "messages",
+        "parameters": {
+          "executable_path": "/System/Applications/Messages.app"
+        }
+      }
+    },
+    {
+      "name": "Passwords",
+      "icon": "app:passwords",
+      "fallback_icon": "🔑",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "passwords",
+        "parameters": {
+          "executable_path": "/System/Applications/Passwords.app"
+        }
+      }
+    },
+    {
+      "name": "Podcasts",
+      "icon": "app:podcasts",
+      "fallback_icon": "🎙️",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "podcasts",
+        "parameters": {
+          "executable_path": "/System/Applications/Podcasts.app"
+        }
+      }
+    },
+    {
+      "name": "Reminders",
+      "icon": "app:reminders",
+      "fallback_icon": "✅",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "reminders",
+        "parameters": {
+          "executable_path": "/System/Applications/Reminders.app"
+        }
+      }
+    },
+    {
+      "name": "Shortcuts",
+      "icon": "app:shortcuts",
+      "fallback_icon": "⚡",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "shortcuts",
+        "parameters": {
+          "executable_path": "/System/Applications/Shortcuts.app"
+        }
+      }
+    },
+    {
+      "name": "Siri",
+      "icon": "app:siri",
+      "fallback_icon": "🎤",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "siri",
+        "parameters": {
+          "executable_path": "/System/Applications/Siri.app"
+        }
+      }
+    },
+    {
+      "name": "Stocks",
+      "icon": "app:stocks",
+      "fallback_icon": "📊",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "stocks",
+        "parameters": {
+          "executable_path": "/System/Applications/Stocks.app"
+        }
+      }
+    },
+    {
+      "name": "System Settings",
+      "icon": "app:systemsettings",
+      "fallback_icon": "⚙️",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "systemsettings",
+        "parameters": {
+          "executable_path": "/System/Applications/System Settings.app"
+        }
+      }
+    },
+    {
+      "name": "Tips",
+      "icon": "app:tips",
+      "fallback_icon": "💡",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "tips",
+        "parameters": {
+          "executable_path": "/System/Applications/Tips.app"
+        }
+      }
+    },
+    {
+      "name": "TV",
+      "icon": "app:tv",
+      "fallback_icon": "📺",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "tv",
+        "parameters": {
+          "executable_path": "/System/Applications/TV.app"
+        }
+      }
+    },
+    {
+      "name": "Voice Memos",
+      "icon": "app:voicememos",
+      "fallback_icon": "🎙️",
+      "tab_id": "apple",
+      "type": "single_app",
+      "launch_config": {
+        "app_type": "generic",
+        "app_name": "voicememos",
+        "parameters": {
+          "executable_path": "/System/Applications/Voice Memos.app"
+        }
+      }
+    }
+  ]
+}

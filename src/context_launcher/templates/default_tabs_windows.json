@@ -1,0 +1,68 @@
+{
+  "version": "3.0",
+  "platform": "win32",
+  "tabs": [
+    {
+      "id": "favorites",
+      "name": "Favorites",
+      "icon": "⭐",
+      "order": 0,
+      "description": "Frequently used apps"
+    },
+    {
+      "id": "ai",
+      "name": "AI",
+      "icon": "🤖",
+      "order": 1,
+      "description": "AI assistants and tools"
+    },
+    {
+      "id": "development",
+      "name": "Development",
+      "icon": "💻",
+      "order": 2,
+      "description": "Development and IT tools"
+    },
+    {
+      "id": "music",
+      "name": "Music & Audio",
+      "icon": "🎵",
+      "order": 3,
+      "description": "Music production and audio tools"
+    },
+    {
+      "id": "entertainment",
+      "name": "Entertainment",
+      "icon": "🎮",
+      "order": 4,
+      "description": "Games, streaming, media"
+    },
+    {
+      "id": "communication",
+      "name": "Communication",
+      "icon": "💬",
+      "order": 5,
+      "description": "Messaging and social apps"
+    },
+    {
+      "id": "productivity",
+      "name": "Productivity",
+      "icon": "📊",
+      "order": 6,
+      "description": "Productivity and utility apps"
+    },
+    {
+      "id": "windows",
+      "name": "Windows Utilities",
+      "icon": "🪟",
+      "order": 7,
+      "description": "Built-in Windows apps and utilities"
+    },
+    {
+      "id": "uncategorized",
+      "name": "Uncategorized",
+      "icon": "📁",
+      "order": 999
+    }
+  ]
+}

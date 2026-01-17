@@ -2,15 +2,27 @@
 
 import sys
 import os
+import json
+import hashlib
 from pathlib import Path
 from typing import Optional, Dict
 from PySide6.QtGui import QIcon, QPixmap, QImage
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QByteArray, QBuffer, QIODevice
 from PySide6.QtWidgets import QFileIconProvider
 
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Cache directory - platform specific
+if sys.platform == "darwin":
+    CACHE_DIR = Path.home() / "Library" / "Caches" / "ContextLauncher" / "icons"
+elif sys.platform == "win32":
+    # Use %LOCALAPPDATA% on Windows
+    CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ContextLauncher" / "icons"
+else:
+    # Linux and others
+    CACHE_DIR = Path.home() / ".cache" / "context_launcher" / "icons"
 
 
 class IconManager:
@@ -56,7 +68,72 @@ class IconManager:
     def __init__(self):
         """Initialize the icon manager."""
         self._icon_cache: Dict[str, QIcon] = {}
+        self._failed_cache: set = set()  # Cache apps that failed to find icons
         self._file_icon_provider = QFileIconProvider()
+        self._disk_cache_loaded = False
+        
+        # Ensure cache directory exists
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Load disk cache
+        self._load_disk_cache()
+    
+    def _get_cache_path(self, cache_key: str) -> Path:
+        """Get the disk cache path for a cache key."""
+        # Create a safe filename from the cache key
+        safe_key = hashlib.md5(cache_key.encode()).hexdigest()
+        return CACHE_DIR / f"{safe_key}.png"
+    
+    def _get_failed_cache_path(self) -> Path:
+        """Get the path to the failed cache file."""
+        return CACHE_DIR / "failed_lookups.json"
+    
+    def _load_disk_cache(self):
+        """Load failed lookups from disk cache."""
+        if self._disk_cache_loaded:
+            return
+        
+        try:
+            failed_path = self._get_failed_cache_path()
+            if failed_path.exists():
+                with open(failed_path, 'r') as f:
+                    data = json.load(f)
+                    self._failed_cache = set(data.get('failed', []))
+                logger.debug(f"Loaded {len(self._failed_cache)} failed lookups from disk cache")
+        except Exception as e:
+            logger.debug(f"Failed to load disk cache: {e}")
+        
+        self._disk_cache_loaded = True
+    
+    def _save_failed_cache(self):
+        """Save failed lookups to disk."""
+        try:
+            failed_path = self._get_failed_cache_path()
+            with open(failed_path, 'w') as f:
+                json.dump({'failed': list(self._failed_cache)}, f)
+        except Exception as e:
+            logger.debug(f"Failed to save failed cache: {e}")
+    
+    def _save_icon_to_disk(self, cache_key: str, icon: QIcon):
+        """Save an icon to disk cache."""
+        try:
+            cache_path = self._get_cache_path(cache_key)
+            pixmap = icon.pixmap(128, 128)  # Save at reasonable size
+            pixmap.save(str(cache_path), "PNG")
+        except Exception as e:
+            logger.debug(f"Failed to save icon to disk: {e}")
+    
+    def _load_icon_from_disk(self, cache_key: str) -> Optional[QIcon]:
+        """Load an icon from disk cache."""
+        try:
+            cache_path = self._get_cache_path(cache_key)
+            if cache_path.exists():
+                pixmap = QPixmap(str(cache_path))
+                if not pixmap.isNull():
+                    return QIcon(pixmap)
+        except Exception as e:
+            logger.debug(f"Failed to load icon from disk: {e}")
+        return None
 
     def get_app_icon(self, app_name: str, executable_path: str = "") -> Optional[QIcon]:
         """Get the icon for an application.
@@ -68,10 +145,20 @@ class IconManager:
         Returns:
             QIcon if found, None otherwise
         """
-        # Check cache first
+        # Check memory cache first
         cache_key = f"{app_name}:{executable_path}"
         if cache_key in self._icon_cache:
             return self._icon_cache[cache_key]
+        
+        # Check if we already know this app has no icon (from memory or disk)
+        if cache_key in self._failed_cache:
+            return None
+        
+        # Check disk cache
+        disk_icon = self._load_icon_from_disk(cache_key)
+        if disk_icon:
+            self._icon_cache[cache_key] = disk_icon
+            return disk_icon
 
         icon = None
 
@@ -81,10 +168,17 @@ class IconManager:
         elif sys.platform == 'darwin':
             icon = self._get_icon_macos(app_name, executable_path)
 
-        # Cache the result (even if None, to avoid repeated lookups)
+        # Cache the result
         if icon and not icon.isNull():
             self._icon_cache[cache_key] = icon
+            # Save to disk cache for future sessions
+            self._save_icon_to_disk(cache_key, icon)
             return icon
+        else:
+            # Cache failed lookups to avoid retrying
+            self._failed_cache.add(cache_key)
+            # Save failed cache periodically
+            self._save_failed_cache()
 
         return None
 
@@ -103,7 +197,7 @@ class IconManager:
             if executable_path and os.path.exists(executable_path):
                 return self._extract_icon_from_exe(executable_path)
 
-            # Try to find the executable for known apps
+            # Try to find the executable for known apps (legacy support)
             if app_name.lower() in self.KNOWN_APPS:
                 app_info = self.KNOWN_APPS[app_name.lower()]
                 exe_names = app_info.get("windows", [])
@@ -124,6 +218,35 @@ class IconManager:
                         found_path = self._find_executable_windows(search_path, exe_name)
                         if found_path:
                             return self._extract_icon_from_exe(str(found_path))
+
+            # Try using the app_registry to find the app path
+            try:
+                from .app_registry import find_app_executable, WINDOWS_APP_NAMES
+                
+                # First try the registry's known path
+                exe_path = find_app_executable(app_name.lower())
+                if exe_path and os.path.exists(exe_path):
+                    return self._extract_icon_from_exe(exe_path)
+                
+                # Try using the WINDOWS_APP_NAMES mapping for display name
+                display_name = WINDOWS_APP_NAMES.get(app_name.lower())
+                if display_name:
+                    # Search common Windows installation paths
+                    search_paths = [
+                        Path(os.environ.get("PROGRAMFILES", "C:\\Program Files")) / display_name,
+                        Path(os.environ.get("PROGRAMFILES(X86)", "C:\\Program Files (x86)")) / display_name,
+                        Path(os.environ.get("LOCALAPPDATA", "")) / display_name,
+                        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / display_name,
+                    ]
+                    for search_path in search_paths:
+                        if search_path.exists():
+                            # Look for .exe files
+                            for exe_file in search_path.glob("*.exe"):
+                                icon = self._extract_icon_from_exe(str(exe_file))
+                                if icon:
+                                    return icon
+            except ImportError:
+                pass
 
             return None
 
@@ -245,7 +368,7 @@ class IconManager:
                 if app_path:
                     return self._extract_icon_from_app_macos(app_path)
 
-            # Try to find the app for known apps
+            # Try to find the app for known apps (legacy support)
             if app_name.lower() in self.KNOWN_APPS:
                 app_info = self.KNOWN_APPS[app_name.lower()]
                 identifiers = app_info.get("darwin", [])
@@ -266,6 +389,32 @@ class IconManager:
                     for app_path in app_paths:
                         if os.path.exists(app_path):
                             return self._extract_icon_from_app_macos(app_path)
+
+            # Try using the app_registry to find the app path
+            try:
+                from .app_registry import find_app_executable, MACOS_APP_NAMES
+                
+                # First try the registry's known path
+                exe_path = find_app_executable(app_name.lower())
+                if exe_path and exe_path.endswith('.app'):
+                    return self._extract_icon_from_app_macos(exe_path)
+                
+                # Try using the MACOS_APP_NAMES mapping
+                display_name = MACOS_APP_NAMES.get(app_name.lower())
+                if display_name:
+                    # Try common locations with the display name
+                    search_paths = [
+                        f"/Applications/{display_name}.app",
+                        f"/System/Applications/{display_name}.app",
+                        os.path.expanduser(f"~/Applications/{display_name}.app"),
+                    ]
+                    for app_path in search_paths:
+                        if os.path.exists(app_path):
+                            return self._extract_icon_from_app_macos(app_path)
+                    
+                    # Skip slow mdfind lookup - if not found in standard locations, give up
+            except ImportError:
+                pass
 
             return None
 
@@ -346,28 +495,51 @@ class IconManager:
             logger.debug(f"Failed to extract icon from {app_path}: {e}")
             return None
 
-    def get_icon_for_session(self, session) -> Optional[QIcon]:
+    def get_icon_for_session(self, session, try_fallback: bool = False) -> Optional[QIcon]:
         """Get the appropriate icon for a session.
+
+        Args:
+            session: Session object
+            try_fallback: If True, also check fallback_icon (used internally)
+
+        Returns:
+            QIcon if app icon found, None otherwise (caller should use emoji fallback)
+        """
+        icon = None
+        
+        # Check if icon field explicitly specifies an app icon
+        if session.icon.startswith("app:"):
+            app_name = session.icon[4:]  # Remove "app:" prefix
+            icon = self.get_app_icon(app_name)
+
+        # ALWAYS try to auto-detect from the app being launched
+        # This allows icons to work even with old sessions that use emoji icons
+        if icon is None:
+            app_name = session.launch_config.app_name
+            params = session.launch_config.parameters
+            executable_path = params.get('executable_path', '')
+            icon = self.get_app_icon(app_name, executable_path)
+
+        return icon
+
+    def get_fallback_icon(self, session) -> str:
+        """Get the fallback icon emoji for a session.
 
         Args:
             session: Session object
 
         Returns:
-            QIcon if app icon found, None otherwise (use emoji fallback)
+            Fallback icon emoji string
         """
-        # Check if icon field explicitly specifies an app icon
-        if session.icon.startswith("app:"):
-            app_name = session.icon[4:]  # Remove "app:" prefix
-            return self.get_app_icon(app_name)
-
-        # Otherwise, try to auto-detect from the app being launched
-        app_name = session.launch_config.app_name
-        params = session.launch_config.parameters
-
-        # Get executable path if available
-        executable_path = params.get('executable_path', '')
-
-        return self.get_app_icon(app_name, executable_path)
+        # Use fallback_icon if available, otherwise use icon (if it's an emoji)
+        if hasattr(session, 'fallback_icon') and session.fallback_icon:
+            return session.fallback_icon
+        
+        # If icon is an emoji (not app:xxx), use it as fallback
+        if session.icon and not session.icon.startswith("app:"):
+            return session.icon
+        
+        return "🌐"  # Default fallback
 
     @staticmethod
     def is_app_icon(icon_string: str) -> bool:
@@ -395,9 +567,25 @@ class IconManager:
             return icon_string[4:]
         return None
 
-    def clear_cache(self):
-        """Clear the icon cache."""
+    def clear_cache(self, include_disk: bool = True):
+        """Clear the icon cache.
+        
+        Args:
+            include_disk: If True, also clear the disk cache
+        """
         self._icon_cache.clear()
+        self._failed_cache.clear()
+        
+        if include_disk:
+            # Clear disk cache
+            try:
+                import shutil
+                if CACHE_DIR.exists():
+                    shutil.rmtree(CACHE_DIR)
+                    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                    logger.info("Cleared disk icon cache")
+            except Exception as e:
+                logger.debug(f"Failed to clear disk cache: {e}")
 
 
 # Global icon manager instance

@@ -2,11 +2,15 @@
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QPushButton, QCheckBox, QComboBox, QGroupBox, QLabel
+    QPushButton, QCheckBox, QComboBox, QGroupBox, QLabel,
+    QMessageBox
 )
 from PySide6.QtCore import Qt
 
 from ..core.config import ConfigManager
+from ..utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class SettingsDialog(QDialog):
@@ -94,6 +98,36 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(behavior_group)
 
+        # Data Management group
+        data_group = QGroupBox("Data Management")
+        data_layout = QVBoxLayout(data_group)
+
+        # Reset to defaults button
+        reset_layout = QHBoxLayout()
+        reset_label = QLabel("Reset all categories and sessions to platform defaults:")
+        reset_label.setWordWrap(True)
+        reset_layout.addWidget(reset_label)
+        reset_layout.addStretch()
+        
+        self.reset_btn = QPushButton("🔄 Reset to Defaults")
+        self.reset_btn.setToolTip(
+            "Delete all user data and restore default categories and sessions.\n"
+            "A backup will be created automatically before reset."
+        )
+        self.reset_btn.clicked.connect(self._on_reset_to_defaults)
+        self.reset_btn.setStyleSheet("QPushButton { color: #cc0000; }")
+        reset_layout.addWidget(self.reset_btn)
+        
+        data_layout.addLayout(reset_layout)
+
+        # Show data location
+        data_path_label = QLabel(f"Data location: {self.config_manager.data_dir}")
+        data_path_label.setStyleSheet("color: gray; font-size: 10px;")
+        data_path_label.setWordWrap(True)
+        data_layout.addWidget(data_path_label)
+
+        layout.addWidget(data_group)
+
         # Spacer
         layout.addStretch()
 
@@ -159,6 +193,66 @@ class SettingsDialog(QDialog):
         self.config_manager.save_user_preferences(self.prefs)
 
         self.accept()
+
+    def _on_reset_to_defaults(self):
+        """Handle reset to defaults button click."""
+        # First confirmation
+        reply = QMessageBox.warning(
+            self,
+            "⚠️ Reset to Defaults",
+            "This will DELETE all your categories, sessions, and workflows!\n\n"
+            "A backup will be created automatically before reset.\n\n"
+            "Are you sure you want to continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # Second confirmation (because this is destructive)
+        reply2 = QMessageBox.critical(
+            self,
+            "🚨 Final Confirmation",
+            "This action cannot be undone (except by restoring from backup).\n\n"
+            "ALL your data will be replaced with platform defaults.\n\n"
+            "Are you ABSOLUTELY sure?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply2 != QMessageBox.StandardButton.Yes:
+            return
+        
+        try:
+            # Perform reset with backup
+            backup_path = self.config_manager.reset_to_defaults(backup_first=True)
+            
+            logger.info(f"Reset to defaults completed. Backup created at: {backup_path}")
+            
+            QMessageBox.information(
+                self,
+                "Reset Complete",
+                f"Successfully reset to defaults!\n\n"
+                f"📦 Backup created at:\n{backup_path}\n\n"
+                "Please restart the application to see the changes.",
+            )
+            
+            # Close the settings dialog
+            self.accept()
+            
+            # Signal that app needs restart (parent window should handle this)
+            # We mark in prefs that a restart is needed
+            self.prefs['_needs_restart'] = True
+            
+        except Exception as e:
+            logger.error(f"Reset to defaults failed: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Reset Failed",
+                f"Failed to reset to defaults:\n\n{str(e)}\n\n"
+                "Your data has NOT been modified."
+            )
 
     def get_preferences(self):
         """Get the current preferences dict.
