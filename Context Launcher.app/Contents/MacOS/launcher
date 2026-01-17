@@ -1,0 +1,21 @@
+#!/bin/bash
+# Context Launcher - macOS App Bundle Launcher
+# This script launches the Python application with proper environment
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+APP_CONTENTS="$(dirname "$SCRIPT_DIR")"
+APP_BUNDLE="$(dirname "$APP_CONTENTS")"
+PROJECT_ROOT="$(dirname "$APP_BUNDLE")"
+
+# Change to project directory
+cd "$PROJECT_ROOT"
+
+# Try to find uv first, then fall back to python
+if command -v uv &> /dev/null; then
+    exec uv run python -m context_launcher "$@"
+elif [ -f "$PROJECT_ROOT/.venv/bin/python" ]; then
+    exec "$PROJECT_ROOT/.venv/bin/python" -m context_launcher "$@"
+else
+    exec python3 -m context_launcher "$@"
+fi

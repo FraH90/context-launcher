@@ -1,6 +1,7 @@
 """Main entry point for Context Launcher."""
 
 import sys
+import os
 import argparse
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
@@ -9,20 +10,39 @@ from .utils.logger import setup_logging, get_logger
 from .ui.main_window import MainWindow
 from .core.debug_config import DebugConfig
 
+# Application metadata
+APP_NAME = "Context Launcher"
+APP_VERSION = "3.0"
+
 
 def _setup_macos_app_name():
-    """Set the application name in macOS menu bar when running as a script."""
+    """Set the application name in macOS menu bar when running as a script.
+    
+    On macOS, Qt reads the application name from argv[0] for the menu bar.
+    We modify sys.argv[0] to show our app name instead of 'Python'.
+    """
+    # Trick 1: Modify argv[0] - Qt uses this for the menu bar name on macOS
+    # This must be done BEFORE QApplication is created
+    sys.argv[0] = APP_NAME
+    
     try:
         from Foundation import NSBundle
-        from AppKit import NSApplication, NSImage
+        from AppKit import NSApplication, NSImage, NSProcessInfo
 
-        # Set the app name in menu bar
+        # Trick 2: Try to modify the process name
+        try:
+            NSProcessInfo.processInfo().setProcessName_(APP_NAME)
+        except Exception:
+            pass
+
+        # Trick 3: Set the app name in bundle info (may not work for scripts)
         bundle = NSBundle.mainBundle()
         info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
         if info:
-            info['CFBundleName'] = 'Context Launcher'
+            info['CFBundleName'] = APP_NAME
+            info['CFBundleDisplayName'] = APP_NAME
 
-        # Force refresh of application name
+        # Set activation policy to regular app (shows in dock)
         app = NSApplication.sharedApplication()
         app.setActivationPolicy_(0)  # NSApplicationActivationPolicyRegular
 
