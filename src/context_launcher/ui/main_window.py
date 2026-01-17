@@ -24,6 +24,7 @@ from ..utils.logger import get_logger
 from .session_dialog import SessionDialog
 from .workflow_dialog import WorkflowDialog
 from .category_dialog import CategoryDialog
+from .settings_dialog import SettingsDialog
 from .tree_widget import SmartTreeWidget
 
 
@@ -52,7 +53,8 @@ class MainWindow(QMainWindow):
         self.current_view_mode = "tree"  # Default to tree view
 
         self.setWindowTitle("Context Launcher v3.0")
-        self.setGeometry(100, 100, 700, 750)
+        # Default geometry - will be overridden by saved preferences if available
+        self.setGeometry(100, 100, 500, 600)
 
         self._init_ui()
         self._setup_keyboard_shortcuts()
@@ -115,6 +117,13 @@ class MainWindow(QMainWindow):
         export_action = QAction("📤 Export...", self)
         export_action.triggered.connect(self._on_export)
         file_menu.addAction(export_action)
+
+        file_menu.addSeparator()
+
+        # Settings
+        settings_action = QAction("⚙ Settings...", self)
+        settings_action.triggered.connect(self._on_settings_clicked)
+        file_menu.addAction(settings_action)
 
         file_menu.addSeparator()
 
@@ -1226,16 +1235,31 @@ class MainWindow(QMainWindow):
             self.logger.info(f"Created default session: {session.name}")
 
     def _load_user_preferences(self):
-        """Load user preferences and apply view mode and theme."""
+        """Load user preferences and apply view mode, theme, and window geometry."""
         prefs = self.config_manager.load_user_preferences()
-        view_mode = prefs.get('ui', {}).get('view_mode', 'tree')
+        ui_prefs = prefs.get('ui', {})
+
+        # Apply view mode
+        view_mode = ui_prefs.get('view_mode', 'tree')
         self.current_view_mode = view_mode
 
         # Apply theme
-        theme = prefs.get('ui', {}).get('theme', 'system')
+        theme = ui_prefs.get('theme', 'system')
         if theme == 'dark':
             self.dark_theme_action.setChecked(True)
             self._toggle_theme()
+
+        # Restore window size if enabled
+        if ui_prefs.get('remember_window_size', True):
+            width = ui_prefs.get('window_width', 500)
+            height = ui_prefs.get('window_height', 600)
+            self.resize(width, height)
+
+        # Restore window position if enabled
+        if ui_prefs.get('remember_window_position', True):
+            x = ui_prefs.get('window_x', 100)
+            y = ui_prefs.get('window_y', 100)
+            self.move(x, y)
 
     def _reload_sessions_and_workflows(self):
         """Reload sessions and workflows from disk to pick up any changes."""
@@ -1804,3 +1828,44 @@ class MainWindow(QMainWindow):
             prefs = self.config_manager.load_user_preferences()
             prefs['ui']['theme'] = 'system'
             self.config_manager.save_user_preferences(prefs)
+
+    def _on_settings_clicked(self):
+        """Open settings dialog."""
+        dialog = SettingsDialog(self, self.config_manager)
+
+        if dialog.exec():
+            # Settings were saved, apply any changes that need immediate effect
+            new_prefs = dialog.get_preferences()
+
+            # Apply theme if changed
+            new_theme = new_prefs.get('ui', {}).get('theme', 'system')
+            current_theme = 'dark' if self.dark_theme_action.isChecked() else 'system'
+
+            if new_theme != current_theme:
+                self.dark_theme_action.setChecked(new_theme == 'dark')
+                self._toggle_theme()
+
+    def closeEvent(self, event):
+        """Handle window close event - save geometry if enabled.
+
+        Args:
+            event: Close event
+        """
+        prefs = self.config_manager.load_user_preferences()
+        ui_prefs = prefs.get('ui', {})
+
+        # Save window size if enabled
+        if ui_prefs.get('remember_window_size', True):
+            prefs['ui']['window_width'] = self.width()
+            prefs['ui']['window_height'] = self.height()
+
+        # Save window position if enabled
+        if ui_prefs.get('remember_window_position', True):
+            prefs['ui']['window_x'] = self.x()
+            prefs['ui']['window_y'] = self.y()
+
+        # Only save if something changed
+        if ui_prefs.get('remember_window_size', True) or ui_prefs.get('remember_window_position', True):
+            self.config_manager.save_user_preferences(prefs)
+
+        event.accept()

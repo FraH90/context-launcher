@@ -329,8 +329,12 @@ class ConfigManager:
             "version": "3.0",
             "ui": {
                 "theme": "system",
-                "window_width": 600,
-                "window_height": 700,
+                "window_width": 500,
+                "window_height": 600,
+                "window_x": 100,
+                "window_y": 100,
+                "remember_window_size": True,
+                "remember_window_position": True,
                 "show_favorites": True,
                 "default_category_expanded": True,
                 "view_mode": "tree"  # "tree" or "tabs"
@@ -338,7 +342,8 @@ class ConfigManager:
             "behavior": {
                 "confirm_delete": True,
                 "close_to_tray": False,
-                "launch_on_startup": False
+                "launch_on_startup": False,
+                "use_app_icons_by_default": True
             }
         }
 
