@@ -6,8 +6,8 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QMenu, QTabWidget,
     QListWidget, QListWidgetItem, QStackedWidget
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QColor, QBrush, QAction, QShortcut, QKeySequence
+from PySide6.QtCore import Qt, QSize, QRect
+from PySide6.QtGui import QFont, QColor, QBrush, QAction, QShortcut, QKeySequence, QPixmap, QPainter, QIcon
 from pathlib import Path
 from typing import Dict, List
 
@@ -18,6 +18,7 @@ from ..core.workflow_executor import WorkflowExecutor, WorkflowExecutionResult, 
 from ..core.window_manager import WindowManager, WindowState
 from ..core.backup_manager import BackupManager
 from ..core.debug_config import DebugConfig
+from ..core.icon_manager import get_icon_manager
 from ..launchers import LaunchConfig, AppType, LauncherFactory
 from ..utils.logger import get_logger
 from .session_dialog import SessionDialog
@@ -356,16 +357,34 @@ class MainWindow(QMainWindow):
             parent_item: Parent category item
         """
         tree_item = QTreeWidgetItem()
-
-        # Format display text
-        if item_type == 'session':
-            display_text = self._format_session_text(item_obj)
-        else:
-            display_text = self._format_workflow_text(item_obj)
-
-        tree_item.setText(0, display_text)
         tree_item.setData(0, Qt.ItemDataRole.UserRole, item_obj)
         tree_item.setData(0, Qt.ItemDataRole.UserRole + 1, item_type)
+
+        # Determine icon to use
+        icon_set = False
+        if item_type == 'session':
+            # Check if icon field specifies app icon (e.g., "app:chrome")
+            if item_obj.icon.startswith("app:"):
+                app_name = item_obj.icon[4:]  # Remove "app:" prefix
+                icon_manager = get_icon_manager()
+                icon = icon_manager.get_app_icon(app_name)
+                if icon and not icon.isNull():
+                    tree_item.setIcon(0, icon)
+                    icon_set = True
+            else:
+                # Try to auto-detect app icon
+                icon_manager = get_icon_manager()
+                icon = icon_manager.get_icon_for_session(item_obj)
+                if icon and not icon.isNull():
+                    tree_item.setIcon(0, icon)
+                    icon_set = True
+
+            # Format text without icon if we set an icon widget
+            display_text = self._format_session_text(item_obj, include_icon=not icon_set)
+        else:
+            display_text = self._format_workflow_text(item_obj, include_icon=True)
+
+        tree_item.setText(0, display_text)
 
         # Style workflows differently (bold)
         if item_type == 'workflow':
@@ -375,11 +394,12 @@ class MainWindow(QMainWindow):
 
         parent_item.addChild(tree_item)
 
-    def _format_session_text(self, session: Session) -> str:
+    def _format_session_text(self, session: Session, include_icon: bool = True) -> str:
         """Format display text for a session.
 
         Args:
             session: Session object
+            include_icon: Whether to include the icon/emoji in text (False when icon widget is used)
 
         Returns:
             Formatted display text
@@ -387,28 +407,35 @@ class MainWindow(QMainWindow):
         app_type = session.launch_config.app_type
         app_name = session.launch_config.app_name
 
+        # Build the prefix (icon or empty)
+        prefix = f"{session.icon} " if include_icon and not session.icon.startswith("app:") else ""
+
         if app_type == "browser":
             tabs = session.launch_config.parameters.get('tabs', [])
             tab_count = len(tabs)
-            return f"{session.icon} {session.name} ({tab_count} tabs)"
+            return f"{prefix}{session.name} ({tab_count} tabs)"
         elif app_type == "editor":
             workspace = session.launch_config.parameters.get('workspace', 'workspace')
             workspace_name = Path(workspace).name if workspace else "workspace"
-            return f"{session.icon} {session.name} ({workspace_name})"
+            return f"{prefix}{session.name} ({workspace_name})"
         else:
-            return f"{session.icon} {session.name} ({app_name})"
+            return f"{prefix}{session.name} ({app_name})"
 
-    def _format_workflow_text(self, workflow: Workflow) -> str:
+    def _format_workflow_text(self, workflow: Workflow, include_icon: bool = True) -> str:
         """Format display text for a workflow.
 
         Args:
             workflow: Workflow object
+            include_icon: Whether to include the icon/emoji in text (False when icon widget is used)
 
         Returns:
             Formatted display text
         """
         step_count = len(workflow.launch_sequence)
-        return f"⚡ {workflow.icon} {workflow.name} ({step_count} steps)"
+        if include_icon:
+            return f"⚡ {workflow.icon} {workflow.name} ({step_count} steps)"
+        else:
+            return f"{workflow.name} ({step_count} steps)"
 
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
         """Handle double-click on tree item.
@@ -1301,6 +1328,16 @@ class MainWindow(QMainWindow):
         list_widget = QListWidget()
         list_widget.itemDoubleClicked.connect(self._on_tab_item_double_clicked)
 
+        # Configure as icon grid view (like a launcher)
+        list_widget.setViewMode(QListWidget.ViewMode.IconMode)
+        list_widget.setIconSize(QSize(48, 48))
+        list_widget.setGridSize(QSize(100, 90))
+        list_widget.setSpacing(10)
+        list_widget.setResizeMode(QListWidget.ResizeMode.Adjust)
+        list_widget.setMovement(QListWidget.Movement.Static)
+        list_widget.setWordWrap(True)
+        list_widget.setUniformItemSizes(True)
+
         # Enable context menu for empty space clicks
         list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         list_widget.customContextMenuRequested.connect(
@@ -1350,6 +1387,28 @@ class MainWindow(QMainWindow):
             list_item = self._create_list_item(item_obj, item_type)
             list_widget.addItem(list_item)
 
+    def _create_emoji_icon(self, emoji: str, size: int = 48) -> QIcon:
+        """Create a QIcon from an emoji string.
+
+        Args:
+            emoji: Emoji character(s)
+            size: Icon size in pixels
+
+        Returns:
+            QIcon with the emoji rendered
+        """
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(pixmap)
+        font = QFont()
+        font.setPixelSize(int(size * 0.75))
+        painter.setFont(font)
+        painter.drawText(QRect(0, 0, size, size), Qt.AlignmentFlag.AlignCenter, emoji)
+        painter.end()
+
+        return QIcon(pixmap)
+
     def _create_list_item(self, item_obj, item_type: str) -> QListWidgetItem:
         """Create a list widget item for session or workflow.
 
@@ -1360,14 +1419,30 @@ class MainWindow(QMainWindow):
         Returns:
             QListWidgetItem
         """
-        if item_type == 'session':
-            display_text = self._format_session_text(item_obj)
-        else:
-            display_text = self._format_workflow_text(item_obj)
+        # For grid view, show just the name (icon is displayed separately)
+        name = item_obj.name
+        emoji = item_obj.icon
 
-        list_item = QListWidgetItem(display_text)
+        list_item = QListWidgetItem(name)
+
+        # Try to get real app icon for sessions
+        icon = None
+        if item_type == 'session':
+            icon_manager = get_icon_manager()
+            icon = icon_manager.get_icon_for_session(item_obj)
+
+        # Use real app icon if available, otherwise fall back to emoji
+        if icon and not icon.isNull():
+            list_item.setIcon(icon)
+        else:
+            # For workflows, add the lightning bolt indicator to emoji
+            if item_type == 'workflow':
+                emoji = f"⚡{emoji}"
+            list_item.setIcon(self._create_emoji_icon(emoji))
+
         list_item.setData(Qt.ItemDataRole.UserRole, item_obj)
         list_item.setData(Qt.ItemDataRole.UserRole + 1, item_type)
+        list_item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom)
 
         # Make workflows bold
         if item_type == 'workflow':

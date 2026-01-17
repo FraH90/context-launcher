@@ -3,7 +3,7 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QTabWidget,
     QLineEdit, QPushButton, QListWidget, QListWidgetItem,
-    QComboBox, QMessageBox, QLabel, QWidget, QFileDialog
+    QComboBox, QMessageBox, QLabel, QWidget, QFileDialog, QCheckBox
 )
 from PySide6.QtCore import Qt
 from typing import Optional
@@ -72,9 +72,21 @@ class SessionDialog(QDialog):
         icon_container.setAlignment(Qt.AlignmentFlag.AlignTop)
         icon_label = QLabel("Icon:")
         icon_container.addWidget(icon_label)
+
+        # Icon input with checkbox for auto app icon
+        icon_input_layout = QVBoxLayout()
+        icon_input_layout.setSpacing(2)
+
         self.icon_edit = QLineEdit()
-        self.icon_edit.setPlaceholderText("🌐")
-        icon_container.addWidget(self.icon_edit)
+        self.icon_edit.setPlaceholderText("🌐 or emoji")
+        icon_input_layout.addWidget(self.icon_edit)
+
+        self.use_app_icon_checkbox = QCheckBox("Use app icon")
+        self.use_app_icon_checkbox.setToolTip("Automatically use the application's icon instead of emoji")
+        self.use_app_icon_checkbox.stateChanged.connect(self._on_use_app_icon_changed)
+        icon_input_layout.addWidget(self.use_app_icon_checkbox)
+
+        icon_container.addLayout(icon_input_layout)
         fields_layout.addLayout(icon_container, stretch=1)
 
         # Category field
@@ -377,6 +389,15 @@ class SessionDialog(QDialog):
         if text.strip():  # If custom path is entered
             self.app_combo.setCurrentIndex(0)  # Reset to "Select an app..."
 
+    def _on_use_app_icon_changed(self, state: int):
+        """Handle use app icon checkbox change."""
+        if state:  # Checked
+            self.icon_edit.setEnabled(False)
+            self.icon_edit.setPlaceholderText("(Using app icon)")
+        else:  # Unchecked
+            self.icon_edit.setEnabled(True)
+            self.icon_edit.setPlaceholderText("🌐 or emoji")
+
     def _browse_workspace(self):
         """Browse for workspace/folder."""
         path = QFileDialog.getExistingDirectory(self, "Select Workspace or Folder")
@@ -450,7 +471,14 @@ class SessionDialog(QDialog):
 
         # Load common fields
         self.name_edit.setText(self.session.name)
-        self.icon_edit.setText(self.session.icon)
+
+        # Handle icon field - check if it's an app icon
+        if self.session.icon.startswith("app:"):
+            self.use_app_icon_checkbox.setChecked(True)
+            self.icon_edit.clear()
+        else:
+            self.use_app_icon_checkbox.setChecked(False)
+            self.icon_edit.setText(self.session.icon)
 
         # Load category/tab selection
         session_tab_id = self.session.tab_id
@@ -524,6 +552,30 @@ class SessionDialog(QDialog):
 
             self.workdir_edit.setText(params.get('working_directory', ''))
 
+    def _get_icon_value(self) -> str:
+        """Get the icon value based on user selection.
+
+        Returns:
+            Icon string - either "app:appname" or an emoji
+        """
+        if self.use_app_icon_checkbox.isChecked():
+            # Determine which app to use for icon
+            current_tab_index = self.tabs.currentIndex()
+
+            if current_tab_index == 0:  # Browser
+                browser = self.browser_combo.currentText()
+                return f"app:{browser}"
+            elif current_tab_index == 1:  # Custom Apps
+                selected_app = self.app_combo.currentData()
+                if selected_app:
+                    return f"app:{selected_app}"
+                else:
+                    # For custom executables, use "app:generic" (will fall back to emoji)
+                    return f"app:generic"
+
+        # Not using app icon, return emoji
+        return self.icon_edit.text().strip() or "🌐"
+
     def get_session(self) -> Optional[Session]:
         """Get the session from dialog inputs based on active tab.
 
@@ -536,7 +588,7 @@ class SessionDialog(QDialog):
             QMessageBox.warning(self, "Invalid Input", "Session name is required.")
             return None
 
-        icon = self.icon_edit.text().strip() or "🌐"
+        icon = self._get_icon_value()
 
         # Determine session type based on active tab
         current_tab_index = self.tabs.currentIndex()
