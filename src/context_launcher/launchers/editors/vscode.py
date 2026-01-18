@@ -1,9 +1,10 @@
 """VS Code launcher."""
 
+import os
 import sys
 import subprocess
 from pathlib import Path
-from typing import List
+from typing import List, Union
 from ..base import BaseLauncher, LaunchResult, ExecutableNotFoundError, ConfigurationError
 
 
@@ -21,6 +22,41 @@ class VSCodeLauncher(BaseLauncher):
         self.folder = config.parameters.get('folder', '')
         self.new_window = config.parameters.get('new_window', False)
         self.add_folder = config.parameters.get('add_folder', False)
+        
+        # Handle executable_path with environment variable expansion and path arrays
+        raw_path = config.parameters.get('executable_path', '')
+        self.executable_path_override = self._resolve_executable_path(raw_path)
+    
+    def _resolve_executable_path(self, path_config: Union[str, List[str]]) -> str:
+        """Resolve executable path from config.
+        
+        Handles environment variable expansion and path arrays.
+        
+        Args:
+            path_config: Path string or list of path strings
+            
+        Returns:
+            Resolved path, or empty string if none found
+        """
+        if not path_config:
+            return ''
+        
+        paths = [path_config] if isinstance(path_config, str) else path_config
+        
+        for path in paths:
+            if not path:
+                continue
+            
+            expanded_path = os.path.expandvars(path)
+            
+            if Path(expanded_path).exists():
+                return expanded_path
+        
+        if paths:
+            expanded = os.path.expandvars(paths[0])
+            return expanded
+        
+        return ''
 
     def launch(self) -> LaunchResult:
         """Launch VS Code with workspace or folder.
@@ -86,7 +122,11 @@ class VSCodeLauncher(BaseLauncher):
         Raises:
             ExecutableNotFoundError: If not found
         """
-        # Try to get from config first
+        # First check if we have an override from the session config (with env var expansion)
+        if hasattr(self, 'executable_path_override') and self.executable_path_override:
+            return self.executable_path_override
+        
+        # Try to get from config manager
         from ...core.config import ConfigManager
         config_manager = ConfigManager()
         config_path = config_manager.get_app_path('vscode')

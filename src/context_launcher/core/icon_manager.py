@@ -187,15 +187,17 @@ class IconManager:
 
         Args:
             app_name: Name of the app
-            executable_path: Optional path to executable
+            executable_path: Optional path to executable (can contain env vars like %APPDATA%)
 
         Returns:
             QIcon if found, None otherwise
         """
         try:
-            # If we have a direct executable path, use it
-            if executable_path and os.path.exists(executable_path):
-                return self._extract_icon_from_exe(executable_path)
+            # If we have a direct executable path, expand env vars and use it
+            if executable_path:
+                expanded_path = os.path.expandvars(executable_path)
+                if os.path.exists(expanded_path):
+                    return self._extract_icon_from_exe(expanded_path)
 
             # Try to find the executable for known apps (legacy support)
             if app_name.lower() in self.KNOWN_APPS:
@@ -351,7 +353,7 @@ class IconManager:
 
         Args:
             app_name: Name of the app
-            executable_path: Optional path to executable/app bundle
+            executable_path: Optional path to executable/app bundle (can contain env vars)
 
         Returns:
             QIcon if found, None otherwise
@@ -362,9 +364,10 @@ class IconManager:
 
             workspace = NSWorkspace.sharedWorkspace()
 
-            # If we have a direct path to an app bundle
+            # If we have a direct path to an app bundle, expand env vars first
             if executable_path:
-                app_path = self._resolve_app_path_macos(executable_path)
+                expanded_path = os.path.expandvars(executable_path)
+                app_path = self._resolve_app_path_macos(expanded_path)
                 if app_path:
                     return self._extract_icon_from_app_macos(app_path)
 

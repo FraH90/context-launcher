@@ -19,7 +19,11 @@ class ChromeLauncher(BrowserLauncher):
         Raises:
             ExecutableNotFoundError: If Chrome is not found
         """
-        # Try to get from config first
+        # First check if we have an override from the session config (with env var expansion)
+        if hasattr(self, 'executable_path_override') and self.executable_path_override:
+            return self.executable_path_override
+        
+        # Try to get from config manager
         from ...core.config import ConfigManager
         config_manager = ConfigManager()
         config_path = config_manager.get_app_path('chrome')

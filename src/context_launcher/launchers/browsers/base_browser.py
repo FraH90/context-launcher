@@ -1,7 +1,8 @@
 """Base class for browser launchers."""
 
+import os
 import subprocess
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 from ..base import BaseLauncher, LaunchConfig, LaunchResult, ExecutableNotFoundError
 from pathlib import Path
 
@@ -19,6 +20,49 @@ class BrowserLauncher(BaseLauncher):
         self.tabs: List[Dict[str, Any]] = config.parameters.get('tabs', [])
         self.profile: str = config.parameters.get('profile', '')
         self.use_selenium: bool = config.parameters.get('use_selenium', False)
+        
+        # Handle executable_path with environment variable expansion and path arrays
+        raw_path = config.parameters.get('executable_path', '')
+        self.executable_path_override = self._resolve_executable_path(raw_path)
+    
+    def _resolve_executable_path(self, path_config: Union[str, List[str]]) -> str:
+        """Resolve executable path from config.
+        
+        Handles:
+        - Single path string
+        - Array of possible paths (tries each until one exists)
+        - Environment variable expansion (e.g., %APPDATA%, %LOCALAPPDATA%)
+        
+        Args:
+            path_config: Path string or list of path strings
+            
+        Returns:
+            Resolved path, or empty string if none found
+        """
+        if not path_config:
+            return ''
+        
+        # Convert single string to list for uniform processing
+        paths = [path_config] if isinstance(path_config, str) else path_config
+        
+        # Try each path after expanding environment variables
+        for path in paths:
+            if not path:
+                continue
+            
+            # Expand environment variables (e.g., %APPDATA% -> C:\Users\...\AppData\Roaming)
+            expanded_path = os.path.expandvars(path)
+            
+            # Check if this path exists
+            if Path(expanded_path).exists():
+                return expanded_path
+        
+        # If none found but we have paths, return the first expanded one
+        if paths:
+            expanded = os.path.expandvars(paths[0])
+            return expanded
+        
+        return ''
 
     def launch(self) -> LaunchResult:
         """Launch browser with configured tabs.

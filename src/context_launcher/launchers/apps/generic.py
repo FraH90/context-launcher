@@ -1,9 +1,10 @@
 """Generic application launcher for any executable."""
 
+import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 from ..base import BaseLauncher, LaunchResult, ExecutableNotFoundError, ConfigurationError
 from ...core.app_registry import get_app_launch_command, find_app_executable, is_app_available
 
@@ -22,15 +23,59 @@ class GenericAppLauncher(BaseLauncher):
         Args:
             config: Launch configuration with:
                 - app_name: Name of app in registry (e.g., 'spotify', 'discord')
-                - executable_path: Optional explicit path to executable
+                - executable_path: Optional explicit path (string) or paths (list) to executable
                 - arguments: Optional list of command-line arguments
                 - working_directory: Optional working directory
         """
         super().__init__(config)
         self.app_name = config.app_name
-        self.executable_path = config.parameters.get('executable_path', '')
+        
+        # Get executable_path - can be string or list
+        raw_path = config.parameters.get('executable_path', '')
+        self.executable_path = self._resolve_executable_path(raw_path)
+        
         self.arguments = config.parameters.get('arguments', [])
         self.working_directory = config.parameters.get('working_directory')
+    
+    def _resolve_executable_path(self, path_config: Union[str, List[str]]) -> str:
+        """Resolve executable path from config.
+        
+        Handles:
+        - Single path string
+        - Array of possible paths (tries each until one exists)
+        - Environment variable expansion (e.g., %APPDATA%, %LOCALAPPDATA%)
+        
+        Args:
+            path_config: Path string or list of path strings
+            
+        Returns:
+            Resolved path, or empty string if none found
+        """
+        if not path_config:
+            return ''
+        
+        # Convert single string to list for uniform processing
+        paths = [path_config] if isinstance(path_config, str) else path_config
+        
+        # Try each path after expanding environment variables
+        for path in paths:
+            if not path:
+                continue
+            
+            # Expand environment variables (e.g., %APPDATA% -> C:\Users\...\AppData\Roaming)
+            expanded_path = os.path.expandvars(path)
+            
+            # Check if this path exists
+            if Path(expanded_path).exists():
+                return expanded_path
+        
+        # If none found but we have paths, return the first expanded one
+        # (it will fail validation later with a clear error)
+        if paths:
+            expanded = os.path.expandvars(paths[0])
+            return expanded
+        
+        return ''
 
     def launch(self) -> LaunchResult:
         """Launch the application.
