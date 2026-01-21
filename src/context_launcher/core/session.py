@@ -241,3 +241,44 @@ def create_generic_app_session(
             }
         )
     )
+
+
+def create_uwp_session(
+    name: str,
+    app_name: str,
+    aumid: Optional[str] = None,
+    protocol: Optional[str] = None,
+    icon: str = "🪟",
+    tab_id: str = "uncategorized"
+) -> Session:
+    """Helper to create a UWP/Store app session (Windows only).
+
+    Args:
+        name: Session name
+        app_name: UWP app identifier (key in UWP_APP_REGISTRY)
+        aumid: Optional explicit Application User Model ID
+        protocol: Optional protocol URI (e.g., 'calculator:', 'ms-photos:')
+        icon: Session icon
+        tab_id: Tab ID this session belongs to
+
+    Returns:
+        Session instance
+    """
+    parameters = {}
+    if aumid:
+        parameters['aumid'] = aumid
+    if protocol:
+        parameters['protocol'] = protocol
+
+    return Session(
+        name=name,
+        icon=icon,
+        description=f"Launch {name} (Windows Store app)",
+        tab_id=tab_id,
+        metadata=SessionMetadata(category_id=tab_id),
+        launch_config=LaunchConfiguration(
+            app_type="uwp",
+            app_name=app_name,
+            parameters=parameters
+        )
+    )

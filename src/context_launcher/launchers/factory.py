@@ -1,12 +1,20 @@
 """Launcher factory for creating launcher instances."""
 
+import sys
 from typing import Dict, Type, Optional
-from .base import BaseLauncher, LaunchConfig
+from .base import BaseLauncher, LaunchConfig, AppType
 from .browsers.chrome import ChromeLauncher
 from .browsers.firefox import FirefoxLauncher
 from .browsers.edge import EdgeLauncher
 from .editors.vscode import VSCodeLauncher
 from .apps.generic import GenericAppLauncher, SlackLauncher, SpotifyLauncher
+
+# Only import UWP on Windows
+if sys.platform == 'win32':
+    from .apps.uwp import UWPLauncher, UWP_APP_REGISTRY
+else:
+    UWPLauncher = None
+    UWP_APP_REGISTRY = {}
 
 
 class LauncherFactory:
@@ -25,6 +33,10 @@ class LauncherFactory:
         'spotify': SpotifyLauncher,
         'generic': GenericAppLauncher,
     }
+
+    # Register UWP launcher only on Windows
+    if sys.platform == 'win32' and UWPLauncher:
+        _registry['uwp'] = UWPLauncher
 
     @classmethod
     def register_launcher(cls, app_name: str, launcher_class: Type[BaseLauncher]):
@@ -56,13 +68,21 @@ class LauncherFactory:
             Launcher instance for the specified app
         """
         app_name = launch_config.app_name.lower()
+        app_type = launch_config.app_type
 
         # Check if we have a specific launcher registered
         launcher_class = cls._registry.get(app_name)
 
         if launcher_class:
             return launcher_class(launch_config)
-        
+
+        # On Windows, check if this is a UWP app
+        if sys.platform == 'win32' and UWPLauncher:
+            # Check if app_type is 'uwp' or app_name is in UWP registry
+            if (app_type == AppType.UWP if hasattr(AppType, 'UWP') else False) or \
+               app_name in UWP_APP_REGISTRY:
+                return UWPLauncher(launch_config)
+
         # For any unregistered app_name, use the GenericAppLauncher
         # The GenericAppLauncher will use the app_registry to find the path
         # or allow launching via 'open -a' on macOS

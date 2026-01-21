@@ -13,6 +13,7 @@ class AppType(Enum):
     EDITOR = "editor"
     COMMUNICATION = "communication"
     GENERIC = "generic"
+    UWP = "uwp"  # Windows Store apps (UWP/MSIX) - Windows only
 
 
 @dataclass

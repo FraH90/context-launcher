@@ -1,5 +1,6 @@
 """Session editor dialog with tabbed interface for different app types."""
 
+import sys
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QTabWidget,
     QLineEdit, QPushButton, QListWidget, QListWidgetItem,
@@ -11,9 +12,16 @@ from pathlib import Path
 
 from ..core.session import (
     Session, create_browser_session, create_vscode_session,
-    create_generic_app_session
+    create_generic_app_session, create_uwp_session
 )
 from ..core.tab import TabsCollection
+
+# Import UWP support only on Windows
+if sys.platform == 'win32':
+    from ..launchers.apps.uwp import UWP_APP_REGISTRY, get_uwp_app_display_name
+else:
+    UWP_APP_REGISTRY = {}
+    def get_uwp_app_display_name(key): return key.title()
 
 
 class SessionDialog(QDialog):
@@ -128,6 +136,11 @@ class SessionDialog(QDialog):
         # Custom Apps tab (combines Editor, Apps + Custom)
         self.custom_apps_tab = self._create_custom_apps_tab()
         self.tabs.addTab(self.custom_apps_tab, "📦 Custom Apps")
+
+        # UWP/Store Apps tab (Windows only)
+        if sys.platform == 'win32':
+            self.uwp_apps_tab = self._create_uwp_apps_tab()
+            self.tabs.addTab(self.uwp_apps_tab, "🪟 Store Apps")
 
         layout.addWidget(self.tabs)
 
@@ -367,6 +380,81 @@ class SessionDialog(QDialog):
 
         return widget
 
+    def _create_uwp_apps_tab(self) -> QWidget:
+        """Create UWP/Store apps configuration tab (Windows only)."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Info label
+        info_label = QLabel(
+            "Select a Windows Store app (UWP/MSIX). These are modern apps "
+            "installed from the Microsoft Store."
+        )
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        # UWP apps dropdown
+        uwp_label = QLabel("<b>Windows Store Apps</b>")
+        layout.addWidget(uwp_label)
+
+        self.uwp_combo = QComboBox()
+        self.uwp_combo.addItem("Select a Store app...", "")
+
+        # Group apps by category
+        categories = {
+            "Microsoft Apps": ["calculator", "calendar", "mail", "photos", "settings",
+                             "store", "weather", "maps", "alarms", "camera", "notepad",
+                             "paint", "snipping", "terminal", "xbox", "movies", "groove",
+                             "voicerecorder", "people", "gethelp", "tips", "yourphone",
+                             "whiteboard", "todo", "onenote", "clipchamp", "clock"],
+            "Social & Streaming": ["spotify", "netflix", "whatsapp", "telegram",
+                                  "primevideo", "disney", "tiktok", "facebook",
+                                  "instagram", "twitter", "linkedin", "amazon"],
+        }
+
+        for category, apps in categories.items():
+            # Add category separator
+            self.uwp_combo.addItem(f"── {category} ──", "__separator__")
+
+            for app_key in apps:
+                if app_key in UWP_APP_REGISTRY:
+                    display_name = get_uwp_app_display_name(app_key)
+                    self.uwp_combo.addItem(f"  {display_name}", app_key)
+
+        layout.addWidget(self.uwp_combo)
+
+        # Note about custom UWP apps
+        custom_note = QLabel(
+            "<i>Note: You can also enter a custom AUMID or protocol URI below "
+            "for apps not in the list.</i>"
+        )
+        custom_note.setWordWrap(True)
+        custom_note.setStyleSheet("color: gray; font-size: 10pt;")
+        layout.addWidget(custom_note)
+
+        # Custom AUMID/Protocol section
+        layout.addSpacing(10)
+
+        custom_label = QLabel("<b>Custom UWP App (Advanced)</b>")
+        layout.addWidget(custom_label)
+
+        form_layout = QFormLayout()
+
+        # AUMID field
+        self.uwp_aumid_edit = QLineEdit()
+        self.uwp_aumid_edit.setPlaceholderText("e.g., Microsoft.WindowsCalculator_8wekyb3d8bbwe!App")
+        form_layout.addRow("AUMID:", self.uwp_aumid_edit)
+
+        # Protocol URI field
+        self.uwp_protocol_edit = QLineEdit()
+        self.uwp_protocol_edit.setPlaceholderText("e.g., calculator: or ms-photos:")
+        form_layout.addRow("Protocol URI:", self.uwp_protocol_edit)
+
+        layout.addLayout(form_layout)
+        layout.addStretch()
+
+        return widget
+
     def _on_app_combo_changed(self, index: int):
         """Handle app combo selection - clear custom executable if app is selected."""
         selected_app = self.app_combo.currentData()
@@ -539,6 +627,22 @@ class SessionDialog(QDialog):
 
             self.workdir_edit.setText(params.get('working_directory', ''))
 
+        elif app_type == "uwp" and sys.platform == 'win32':
+            self.tabs.setCurrentIndex(2)  # UWP Apps tab
+
+            # Try to find the app in the combo box
+            found = False
+            for i in range(self.uwp_combo.count()):
+                if self.uwp_combo.itemData(i) == app_name:
+                    self.uwp_combo.setCurrentIndex(i)
+                    found = True
+                    break
+
+            # If not found in combo, it's a custom UWP app
+            if not found:
+                self.uwp_aumid_edit.setText(params.get('aumid', ''))
+                self.uwp_protocol_edit.setText(params.get('protocol', ''))
+
         else:  # Generic
             self.tabs.setCurrentIndex(1)  # Custom Apps tab
 
@@ -572,6 +676,12 @@ class SessionDialog(QDialog):
                 else:
                     # For custom executables, use "app:generic" (will fall back to emoji)
                     return f"app:generic"
+            elif current_tab_index == 2 and sys.platform == 'win32':  # UWP Apps
+                selected_uwp = self.uwp_combo.currentData()
+                if selected_uwp and selected_uwp != "__separator__":
+                    return f"app:{selected_uwp}"
+                else:
+                    return "app:uwp"
 
         # Not using app icon, return emoji
         return self.icon_edit.text().strip() or "🌐"
@@ -597,6 +707,8 @@ class SessionDialog(QDialog):
             return self._create_browser_session(name, icon)
         elif current_tab_index == 1:  # Custom Apps
             return self._create_custom_app_session(name, icon)
+        elif current_tab_index == 2 and sys.platform == 'win32':  # UWP Apps (Windows only)
+            return self._create_uwp_session(name, icon)
         else:
             return None
 
@@ -773,5 +885,69 @@ class SessionDialog(QDialog):
                 self,
                 "Invalid Input",
                 "Please select a known application or provide a custom executable path."
+            )
+            return None
+
+    def _create_uwp_session(self, name: str, icon: str) -> Optional[Session]:
+        """Create UWP/Store app session from inputs (Windows only)."""
+        # Get selected tab_id
+        tab_id = self.tab_combo.currentData() or "uncategorized"
+
+        # Check if a known UWP app is selected
+        selected_uwp = self.uwp_combo.currentData()
+        custom_aumid = self.uwp_aumid_edit.text().strip()
+        custom_protocol = self.uwp_protocol_edit.text().strip()
+
+        if selected_uwp and selected_uwp != "__separator__":
+            # Known UWP app selected
+            if self.editing and self.session:
+                # Update existing session
+                self.session.name = name
+                self.session.icon = icon
+                self.session.tab_id = tab_id
+                self.session.launch_config.app_type = "uwp"
+                self.session.launch_config.app_name = selected_uwp
+                # Clear any custom AUMID/protocol - will use registry
+                self.session.launch_config.parameters.pop('aumid', None)
+                self.session.launch_config.parameters.pop('protocol', None)
+                return self.session
+            else:
+                return create_uwp_session(
+                    name=name,
+                    app_name=selected_uwp,
+                    icon=icon,
+                    tab_id=tab_id
+                )
+
+        elif custom_aumid or custom_protocol:
+            # Custom AUMID or protocol provided
+            if self.editing and self.session:
+                # Update existing session
+                self.session.name = name
+                self.session.icon = icon
+                self.session.tab_id = tab_id
+                self.session.launch_config.app_type = "uwp"
+                self.session.launch_config.app_name = "custom_uwp"
+                if custom_aumid:
+                    self.session.launch_config.parameters['aumid'] = custom_aumid
+                if custom_protocol:
+                    self.session.launch_config.parameters['protocol'] = custom_protocol
+                return self.session
+            else:
+                return create_uwp_session(
+                    name=name,
+                    app_name="custom_uwp",
+                    aumid=custom_aumid if custom_aumid else None,
+                    protocol=custom_protocol if custom_protocol else None,
+                    icon=icon,
+                    tab_id=tab_id
+                )
+
+        else:
+            # No UWP app selected
+            QMessageBox.warning(
+                self,
+                "Invalid Input",
+                "Please select a Windows Store app or provide a custom AUMID/protocol."
             )
             return None
