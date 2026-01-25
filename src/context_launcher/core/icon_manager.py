@@ -4,6 +4,8 @@ import sys
 import os
 import json
 import hashlib
+import subprocess
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional, Dict
 from PySide6.QtGui import QIcon, QPixmap, QImage
@@ -164,7 +166,11 @@ class IconManager:
 
         # Try to get icon based on platform
         if sys.platform == 'win32':
-            icon = self._get_icon_windows(app_name, executable_path)
+            # First check if this is a UWP app
+            icon = self._get_icon_uwp(app_name)
+            # If not UWP or UWP icon not found, try regular Windows extraction
+            if icon is None:
+                icon = self._get_icon_windows(app_name, executable_path)
         elif sys.platform == 'darwin':
             icon = self._get_icon_macos(app_name, executable_path)
 
@@ -348,6 +354,185 @@ class IconManager:
 
         return None
 
+    def _get_icon_uwp(self, app_name: str) -> Optional[QIcon]:
+        """Get icon for a UWP/Windows Store app.
+
+        Args:
+            app_name: Name of the UWP app (key in UWP_APP_REGISTRY)
+
+        Returns:
+            QIcon if found, None otherwise
+        """
+        if sys.platform != 'win32':
+            return None
+
+        try:
+            # Import UWP registry
+            from ..launchers.apps.uwp import UWP_APP_REGISTRY
+
+            app_key = app_name.lower()
+            if app_key not in UWP_APP_REGISTRY:
+                print(f"[UWP DEBUG] {app_name} not in UWP_APP_REGISTRY")
+                return None
+
+            app_info = UWP_APP_REGISTRY[app_key]
+            aumid = app_info.get('aumid', '')
+            if not aumid:
+                print(f"[UWP DEBUG] {app_name} has no AUMID")
+                return None
+
+            # Extract package family name from AUMID (format: PackageFamilyName!AppId)
+            pkg_family = aumid.split('!')[0]
+            print(f"[UWP DEBUG] {app_name} -> pkg_family: {pkg_family}")
+
+            # Use PowerShell to get the package install location
+            ps_command = (
+                "$pkg = Get-AppxPackage | Where-Object { $_.PackageFamilyName -eq '"
+                + pkg_family
+                + "' } | Select-Object -First 1; if ($pkg) { $pkg.InstallLocation }"
+            )
+
+            result = subprocess.run(
+                ['powershell', '-NoProfile', '-Command', ps_command],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+            )
+
+            print(f"[UWP DEBUG] PowerShell returncode: {result.returncode}")
+            print(f"[UWP DEBUG] PowerShell stdout: '{result.stdout.strip()}'")
+            print(f"[UWP DEBUG] PowerShell stderr: '{result.stderr.strip()}'")
+
+            if result.returncode != 0 or not result.stdout.strip():
+                logger.debug(f"Could not find UWP package for {app_name}")
+                return None
+
+            install_location = Path(result.stdout.strip())
+            print(f"[UWP DEBUG] install_location: {install_location}")
+            print(f"[UWP DEBUG] install_location.exists(): {install_location.exists()}")
+            if not install_location.exists():
+                return None
+
+            # Parse AppxManifest.xml to find logo paths
+            manifest_path = install_location / "AppxManifest.xml"
+            print(f"[UWP DEBUG] manifest_path: {manifest_path}")
+            print(f"[UWP DEBUG] manifest_path.exists(): {manifest_path.exists()}")
+            if not manifest_path.exists():
+                return None
+
+            # Search Assets folder for AppList icons with targetsize
+            assets_dir = install_location / "Assets"
+            if not assets_dir.exists():
+                print(f"[UWP DEBUG] Assets folder not found")
+                return None
+
+            # Find the best icon using UWP naming conventions
+            # Priority: AppList icons with targetsize (these are the actual app icons)
+            import re
+
+            best_icon = None
+            best_size = 0
+
+            for png_file in assets_dir.glob("*.png"):
+                filename = png_file.name
+
+                # Look for targetsize pattern (e.g., targetsize-256)
+                match = re.search(r'targetsize-(\d+)', filename)
+                if not match:
+                    continue
+
+                size = int(match.group(1))
+
+                # Prioritize AppList icons (the actual app icons)
+                is_applist = 'applist' in filename.lower()
+
+                # Calculate priority score: AppList icons get bonus, larger size is better
+                # Prefer unplated versions (cleaner look)
+                is_unplated = '_altform-unplated' in filename.lower()
+
+                priority = size
+                if is_applist:
+                    priority += 1000  # Strong preference for AppList icons
+                if is_unplated:
+                    priority += 100   # Slight preference for unplated
+
+                if priority > best_size:
+                    best_size = priority
+                    best_icon = png_file
+
+            if best_icon:
+                print(f"[UWP DEBUG] Best icon: {best_icon.name} (priority={best_size})")
+                pixmap = QPixmap(str(best_icon))
+                if not pixmap.isNull():
+                    return QIcon(pixmap)
+
+            print(f"[UWP DEBUG] No AppList/targetsize icon found for {app_name}")
+            return None
+
+        except ImportError:
+            logger.debug("UWP module not available")
+            return None
+        except Exception as e:
+            logger.debug(f"Failed to get UWP icon for {app_name}: {e}")
+            return None
+
+    def _parse_uwp_manifest_for_logos(self, manifest_path: Path, install_location: Path) -> list:
+        """Parse AppxManifest.xml to find logo paths.
+
+        Args:
+            manifest_path: Path to AppxManifest.xml
+            install_location: Package install location
+
+        Returns:
+            List of Path objects to try for icons
+        """
+        logo_paths = []
+
+        try:
+            tree = ET.parse(manifest_path)
+            root = tree.getroot()
+
+            # Handle XML namespaces
+            namespaces = {
+                'default': 'http://schemas.microsoft.com/appx/manifest/foundation/windows10',
+                'uap': 'http://schemas.microsoft.com/appx/manifest/uap/windows10',
+            }
+
+            # Try to find VisualElements which contains logo paths
+            for elem in root.iter():
+                # Look for attributes containing logo paths
+                for attr in ['Square150x150Logo', 'Square44x44Logo', 'Square71x71Logo',
+                            'Square310x310Logo', 'Wide310x150Logo', 'StoreLogo', 'Logo']:
+                    logo_rel = elem.attrib.get(attr)
+                    if logo_rel:
+                        # The manifest contains relative paths like "Assets\StoreLogo.png"
+                        # but actual files might have scale suffixes like "StoreLogo.scale-200.png"
+                        logo_base = install_location / logo_rel
+                        logo_paths.append(logo_base)
+
+                        # Also check for scaled variants
+                        parent = logo_base.parent
+                        stem = logo_base.stem
+                        suffix = logo_base.suffix
+
+                        for scale in ['400', '200', '150', '125', '100']:
+                            scaled_name = f"{stem}.scale-{scale}{suffix}"
+                            logo_paths.append(parent / scaled_name)
+
+                            # Some apps use targetsize instead of scale
+                            for size in ['256', '128', '96', '64', '48', '32']:
+                                target_name = f"{stem}.targetsize-{size}{suffix}"
+                                logo_paths.append(parent / target_name)
+                                # Also with altform
+                                target_alt_name = f"{stem}.targetsize-{size}_altform-unplated{suffix}"
+                                logo_paths.append(parent / target_alt_name)
+
+        except Exception as e:
+            logger.debug(f"Failed to parse UWP manifest: {e}")
+
+        return logo_paths
+
     def _get_icon_macos(self, app_name: str, executable_path: str = "") -> Optional[QIcon]:
         """Get application icon on macOS.
 
@@ -501,6 +686,11 @@ class IconManager:
     def get_icon_for_session(self, session, try_fallback: bool = False) -> Optional[QIcon]:
         """Get the appropriate icon for a session.
 
+        The icon system works as follows:
+        - If icon starts with "app:", extract icon from that app
+        - If icon is "app:this_exec", extract icon from the session's executable_path
+        - If icon is anything else (emoji), return None and caller uses emoji
+
         Args:
             session: Session object
             try_fallback: If True, also check fallback_icon (used internally)
@@ -508,22 +698,23 @@ class IconManager:
         Returns:
             QIcon if app icon found, None otherwise (caller should use emoji fallback)
         """
-        icon = None
-        
-        # Check if icon field explicitly specifies an app icon
-        if session.icon.startswith("app:"):
-            app_name = session.icon[4:]  # Remove "app:" prefix
-            icon = self.get_app_icon(app_name)
+        # Only process app: prefixed icons - everything else is an emoji
+        if not session.icon.startswith("app:"):
+            return None
 
-        # ALWAYS try to auto-detect from the app being launched
-        # This allows icons to work even with old sessions that use emoji icons
-        if icon is None:
-            app_name = session.launch_config.app_name
+        app_name = session.icon[4:]  # Remove "app:" prefix
+
+        # Special case: app:this_exec means extract from the session's executable_path
+        if app_name == "this_exec":
             params = session.launch_config.parameters
             executable_path = params.get('executable_path', '')
-            icon = self.get_app_icon(app_name, executable_path)
+            if executable_path:
+                # Pass empty app_name since we only care about the executable
+                return self.get_app_icon("", executable_path)
+            return None
 
-        return icon
+        # Otherwise, use the specified app name to find and extract its icon
+        return self.get_app_icon(app_name)
 
     def get_fallback_icon(self, session) -> str:
         """Get the fallback icon emoji for a session.

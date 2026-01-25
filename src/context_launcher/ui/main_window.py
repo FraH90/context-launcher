@@ -3,7 +3,7 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QMessageBox, QLabel, QLineEdit,
-    QTreeWidgetItem, QMenu, QTabWidget,
+    QTreeWidgetItem, QMenu, QTabWidget, QTabBar,
     QListWidget, QListWidgetItem, QStackedWidget
 )
 from PySide6.QtCore import Qt, QSize, QRect
@@ -26,6 +26,40 @@ from .workflow_dialog import WorkflowDialog
 from .category_dialog import CategoryDialog
 from .settings_dialog import SettingsDialog
 from .tree_widget import SmartTreeWidget
+
+
+class SkipPlusTabBar(QTabBar):
+    """Custom tab bar that skips the '+' tab when scrolling with mouse wheel."""
+
+    def wheelEvent(self, event):
+        """Handle mouse wheel to skip the '+' tab."""
+        # Get number of real tabs (excluding the + tab at the end)
+        num_real_tabs = self.count() - 1  # Subtract 1 for the + tab
+
+        if num_real_tabs <= 0:
+            event.accept()
+            return
+
+        current = self.currentIndex()
+
+        # Determine scroll direction
+        delta = event.angleDelta().y()
+
+        if delta > 0:
+            # Scroll up = go to previous tab
+            if current > 0:
+                new_index = current - 1
+            else:
+                new_index = num_real_tabs - 1  # Wrap to last real tab
+        else:
+            # Scroll down = go to next tab
+            if current < num_real_tabs - 1:
+                new_index = current + 1
+            else:
+                new_index = 0  # Wrap to first tab
+
+        self.setCurrentIndex(new_index)
+        event.accept()
 
 
 class MainWindow(QMainWindow):
@@ -216,6 +250,9 @@ class MainWindow(QMainWindow):
 
         # Create Tab View (index 1)
         self.tab_widget = QTabWidget()
+        # Use custom tab bar that skips the "+" tab when scrolling
+        custom_tab_bar = SkipPlusTabBar()
+        self.tab_widget.setTabBar(custom_tab_bar)
         self.tab_widget.setTabsClosable(False)  # Don't allow closing tabs in this mode
         self.tab_widget.currentChanged.connect(self._on_tab_changed)  # Handle tab changes
         self.tab_widget.tabBar().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
