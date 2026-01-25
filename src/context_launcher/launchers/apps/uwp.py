@@ -81,7 +81,7 @@ UWP_APP_REGISTRY: Dict[str, Dict[str, str]] = {
     "terminal": {
         "name": "Windows Terminal",
         "aumid": "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",
-        "protocol": "wt:",
+        "protocol": None,  # wt: protocol not always registered, use AUMID
     },
     "xbox": {
         "name": "Xbox",
@@ -252,6 +252,327 @@ def get_installed_uwp_apps() -> List[Dict[str, Any]]:
         pass
 
     return []
+
+
+# Packages to exclude (runtime libraries, system utilities, not user-facing apps)
+_EXCLUDED_PACKAGES = [
+    # Runtimes and frameworks
+    'winappruntime',
+    'widgets.platform',
+    'webexperience',
+    'mrt.',
+    'vclibs',
+    '.net',
+    'directx',
+    'framework',
+    'runtime',
+    'sdk',
+    'extension',
+    'services.',
+    # System utilities
+    'crossdevice',
+    'applicationcompatibility',
+    'securityhealth',
+    'windowspackagemanager',
+    'devhome',
+    'speech',
+    'plugin',
+    'tcui',
+    'gamebar',
+    'winget',
+    # Internal system apps
+    'accountscontrol',
+    'assignedaccess',
+    'asynctextservice',
+    'bioenrollment',
+    'callingshellapp',
+    'capturepicker',
+    'cbs',
+    'chxapp',
+    'cloudexperiencehost',
+    'contentdeliverymanager',
+    'creddialoghost',
+    'ecapp',
+    'fileexp',
+    'lockapp',
+    'narratorquickstart',
+    'ncsiuwpapp',
+    'oobennetwork',
+    'parentalcontrols',
+    'peopleexperiencehost',
+    'pinningconfirmation',
+    'printdialog',
+    'printqueueactioncenter',
+    'secureassessment',
+    'shellexperiencehost',
+    'startexperiencesapp',
+    'startmenuexperiencehost',
+    'storepurchaseapp',
+    'win32webviewhost',
+    'xboxgamecallable',
+    'xboxidentityprovider',
+    'xgpuejectdialog',
+    'immersivecontrolpanel',  # Settings (keep ms-settings: protocol though)
+    'desktopappinstaller',
+    'microsoftedgedevtools',
+    'bingsearch',
+    'oobenetwork',
+    'sechealthui',
+    'udkuserexperiencehost',
+    'core',
+    'winui3gallery',  # Developer sample app
+    'winui 3 gallery',  # Developer sample app (display name)
+    'udk package',  # UDK host
+    'windbg',  # Debugger
+    # GUIDs and internal IDs
+    '1527c705-839a',
+    'c5e2524a-ea46',
+    'e2a4f912-2574',
+    'f46d4000-fd22',
+]
+
+
+# Mapping from package names to registry keys (order matters - more specific first)
+_PACKAGE_TO_REGISTRY_KEY = [
+    # More specific patterns first
+    ('instagrambeta', 'instagram'),
+    ('facebook.facebook', 'facebook'),
+    # Microsoft apps
+    ('windowscalculator', 'calculator'),
+    ('windowscommunicationsapps', 'mail'),  # Also calendar
+    ('windows.photos', 'photos'),
+    ('windowsstore', 'store'),
+    ('bingweather', 'weather'),
+    ('windowsmaps', 'maps'),
+    ('windowsalarms', 'alarms'),
+    ('windowscamera', 'camera'),
+    ('windowsnotepad', 'notepad'),
+    ('microsoft.paint', 'paint'),
+    ('screensketch', 'snipping'),
+    ('windowsterminal', 'terminal'),
+    ('gamingapp', 'xbox'),
+    ('windowsfeedbackhub', 'feedback'),
+    ('zunevideo', 'movies'),
+    ('zunemusic', 'groove'),
+    ('windowssoundrecorder', 'voicerecorder'),
+    ('microsoft.people', 'people'),
+    ('gethelp', 'gethelp'),
+    ('getstarted', 'tips'),
+    ('yourphone', 'yourphone'),
+    ('whiteboard', 'whiteboard'),
+    ('microsoft.todos', 'todo'),
+    ('office.onenote', 'onenote'),
+    ('clipchamp', 'clipchamp'),
+    # Third party
+    ('spotifymusic', 'spotify'),
+    ('netflix', 'netflix'),
+    ('whatsappdesktop', 'whatsapp'),
+    ('telegramdesktop', 'telegram'),
+    ('amazon.com.amazon', 'amazon'),
+    ('primevideo', 'primevideo'),
+    ('disney', 'disney'),
+    ('tiktok', 'tiktok'),
+    ('twitter', 'twitter'),
+    ('linkedin', 'linkedin'),
+]
+
+
+def _normalize_app_key(package_name: str, display_name: str) -> str:
+    """Normalize package name to a registry-compatible key.
+
+    Args:
+        package_name: The raw package name (e.g., Microsoft.WindowsCalculator)
+        display_name: The display name (e.g., Calculator)
+
+    Returns:
+        Normalized key that matches UWP_APP_REGISTRY when possible
+    """
+    # First, try to match against known mappings (order matters)
+    name_lower = package_name.lower()
+
+    for pattern, key in _PACKAGE_TO_REGISTRY_KEY:
+        if pattern in name_lower:
+            return key
+
+    # Fallback: extract the last component and clean it up
+    if 'Microsoft.' in package_name:
+        key = package_name.split('.')[-1].lower()
+    elif '.' in package_name:
+        key = package_name.split('.')[-1].lower()
+    else:
+        key = package_name.lower()
+
+    # Remove common prefixes/suffixes
+    key = key.replace('windows', '').replace('microsoft', '')
+    key = key.replace('_', '').replace('-', '')
+
+    # If key is empty, use display name
+    if not key:
+        key = display_name.lower().replace(' ', '').replace('-', '')
+
+    return key
+
+
+# Cache for installed UWP apps with details
+_installed_uwp_cache: Optional[List[Dict[str, Any]]] = None
+_installed_uwp_cache_time: float = 0
+_CACHE_TTL_SECONDS = 300  # Cache for 5 minutes
+
+
+def get_installed_uwp_apps_with_details(force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """Get list of installed UWP apps with display names and AUMIDs.
+
+    Uses PowerShell to query installed packages and their manifests.
+    Results are cached to avoid repeated PowerShell calls.
+
+    Args:
+        force_refresh: If True, ignore cache and refresh from system
+
+    Returns:
+        List of dicts with:
+            - display_name: Human-readable app name
+            - app_key: Lowercase key for icon lookup
+            - aumid: Application User Model ID
+            - package_family_name: Package family name
+            - install_location: Path to app installation
+    """
+    import time
+    import json
+    import xml.etree.ElementTree as ET
+
+    global _installed_uwp_cache, _installed_uwp_cache_time
+
+    if sys.platform != 'win32':
+        return []
+
+    # Check cache
+    current_time = time.time()
+    if not force_refresh and _installed_uwp_cache is not None:
+        if current_time - _installed_uwp_cache_time < _CACHE_TTL_SECONDS:
+            return _installed_uwp_cache
+
+    apps_with_details = []
+
+    try:
+        # PowerShell command to get installed UWP apps with manifest info
+        # Include both Store apps and System apps (Windows built-ins like Notepad, Sticky Notes)
+        ps_command = '''
+        $apps = Get-AppxPackage | Where-Object {$_.IsFramework -eq $false -and ($_.SignatureKind -eq 'Store' -or $_.SignatureKind -eq 'System')}
+        $results = @()
+        foreach ($app in $apps) {
+            try {
+                $manifest = Get-AppxPackageManifest -Package $app.PackageFullName -ErrorAction SilentlyContinue
+                if ($manifest) {
+                    $displayName = $manifest.Package.Properties.DisplayName
+                    $appId = $manifest.Package.Applications.Application.Id
+                    if ($appId -is [array]) { $appId = $appId[0] }
+
+                    # For apps with resource-based names, try to get a better name
+                    $finalDisplayName = $displayName
+                    if ($displayName -and $displayName.StartsWith('ms-resource:')) {
+                        # Use the last part of package name as display name
+                        $nameParts = $app.Name -split '\.'
+                        $finalDisplayName = $nameParts[-1]
+                        # Clean up common prefixes
+                        $finalDisplayName = $finalDisplayName -replace '^Windows', ''
+                        if ($finalDisplayName -eq '') { $finalDisplayName = $app.Name }
+                    }
+                    if ($finalDisplayName) {
+                        # Apply display name corrections
+                        $displayNameMap = @{
+                            'communicationsapps' = 'Mail & Calendar'
+                            'BingWeather' = 'Weather'
+                            'ZuneMusic' = 'Groove Music'
+                            'ZuneVideo' = 'Movies & TV'
+                            'ScreenSketch' = 'Snipping Tool'
+                            'SoundRecorder' = 'Voice Recorder'
+                            'MicrosoftStickyNotes' = 'Sticky Notes'
+                            'Getstarted' = 'Tips'
+                            'GetHelp' = 'Get Help'
+                            'FeedbackHub' = 'Feedback Hub'
+                            'YourPhone' = 'Phone Link'
+                            'Todos' = 'Microsoft To Do'
+                        }
+                        if ($displayNameMap.ContainsKey($finalDisplayName)) {
+                            $finalDisplayName = $displayNameMap[$finalDisplayName]
+                        }
+                        $results += @{
+                            DisplayName = $finalDisplayName
+                            PackageFamilyName = $app.PackageFamilyName
+                            InstallLocation = $app.InstallLocation
+                            AppId = $appId
+                            Name = $app.Name
+                        }
+                    }
+                }
+            } catch {}
+        }
+        $results | ConvertTo-Json -Depth 3
+        '''
+
+        result = subprocess.run(
+            ['powershell', '-Command', ps_command],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        if result.returncode == 0 and result.stdout.strip():
+            raw_apps = json.loads(result.stdout)
+            # Ensure it's always a list
+            if isinstance(raw_apps, dict):
+                raw_apps = [raw_apps]
+
+            for app in raw_apps:
+                display_name = app.get('DisplayName', '')
+                package_family = app.get('PackageFamilyName', '')
+                app_id = app.get('AppId', 'App')
+                install_location = app.get('InstallLocation', '')
+                name = app.get('Name', '')
+
+                if not display_name or not package_family:
+                    continue
+
+                # Skip excluded packages (runtimes, libraries, etc.)
+                name_lower = name.lower()
+                display_lower = display_name.lower()
+                if any(excl in name_lower or excl in display_lower for excl in _EXCLUDED_PACKAGES):
+                    continue
+
+                # Build AUMID
+                aumid = f"{package_family}!{app_id}"
+
+                # Create app key for icon lookup and registry matching
+                app_key = _normalize_app_key(name, display_name)
+
+                apps_with_details.append({
+                    'display_name': display_name,
+                    'app_key': app_key,
+                    'aumid': aumid,
+                    'package_family_name': package_family,
+                    'install_location': install_location,
+                    'name': name,
+                })
+
+        # Sort by display name
+        apps_with_details.sort(key=lambda x: x['display_name'].lower())
+
+        # Update cache
+        _installed_uwp_cache = apps_with_details
+        _installed_uwp_cache_time = current_time
+
+    except Exception as e:
+        # On error, return empty list but don't cache it
+        pass
+
+    return apps_with_details
+
+
+def clear_uwp_cache():
+    """Clear the installed UWP apps cache."""
+    global _installed_uwp_cache, _installed_uwp_cache_time
+    _installed_uwp_cache = None
+    _installed_uwp_cache_time = 0
 
 
 def find_uwp_app_aumid(app_name: str) -> Optional[str]:

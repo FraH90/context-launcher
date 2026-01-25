@@ -119,9 +119,11 @@ class MainWindow(QMainWindow):
         """
         if DebugConfig.is_debug_mode():
             QMessageBox.information(self, title, message)
-        else:
-            # Log instead of showing popup
-            self.logger.info(f"SUCCESS - {title}: {message}")
+            # Also log in debug mode, formatted on one line
+            clean_message = message.replace('\n\n', ' - ').replace('\n', ' ')
+            self.logger.info(f"SUCCESS - {title}: {clean_message}")
+            print()  # Blank line after success message
+        # In non-debug mode: silent success (no logging)
 
     def _create_menu_bar(self):
         """Create application menu bar."""
@@ -948,7 +950,8 @@ class MainWindow(QMainWindow):
             launcher = LauncherFactory.create_launcher(launch_config)
 
             # Launch
-            self.logger.info(f"Launching session: {session.name}")
+            if DebugConfig.is_debug_mode():
+                self.logger.info(f"Launching session: {session.name}")
             result = launcher.launch()
 
             if result.success:

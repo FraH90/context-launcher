@@ -18,10 +18,14 @@ from ..core.tab import TabsCollection
 
 # Import UWP support only on Windows
 if sys.platform == 'win32':
-    from ..launchers.apps.uwp import UWP_APP_REGISTRY, get_uwp_app_display_name
+    from ..launchers.apps.uwp import (
+        UWP_APP_REGISTRY, get_uwp_app_display_name,
+        get_installed_uwp_apps_with_details
+    )
 else:
     UWP_APP_REGISTRY = {}
     def get_uwp_app_display_name(key): return key.title()
+    def get_installed_uwp_apps_with_details(force_refresh=False): return []
 
 
 class SessionDialog(QDialog):
@@ -394,32 +398,36 @@ class SessionDialog(QDialog):
         layout.addWidget(info_label)
 
         # UWP apps dropdown
-        uwp_label = QLabel("<b>Windows Store Apps</b>")
+        uwp_label = QLabel("<b>Installed Store Apps</b>")
         layout.addWidget(uwp_label)
 
         self.uwp_combo = QComboBox()
         self.uwp_combo.addItem("Select a Store app...", "")
+        self.uwp_combo.currentIndexChanged.connect(self._on_uwp_combo_changed)
 
-        # Group apps by category
-        categories = {
-            "Microsoft Apps": ["calculator", "calendar", "mail", "photos", "settings",
-                             "store", "weather", "maps", "alarms", "camera", "notepad",
-                             "paint", "snipping", "terminal", "xbox", "movies", "groove",
-                             "voicerecorder", "people", "gethelp", "tips", "yourphone",
-                             "whiteboard", "todo", "onenote", "clipchamp", "clock"],
-            "Social & Streaming": ["spotify", "netflix", "whatsapp", "telegram",
-                                  "primevideo", "disney", "tiktok", "facebook",
-                                  "instagram", "twitter", "linkedin", "amazon"],
-        }
+        # Store the installed apps data for later use
+        self._installed_uwp_apps = {}
 
-        for category, apps in categories.items():
-            # Add category separator
-            self.uwp_combo.addItem(f"── {category} ──", "__separator__")
+        # Get dynamically detected installed apps
+        installed_apps = get_installed_uwp_apps_with_details()
 
-            for app_key in apps:
-                if app_key in UWP_APP_REGISTRY:
-                    display_name = get_uwp_app_display_name(app_key)
-                    self.uwp_combo.addItem(f"  {display_name}", app_key)
+        if installed_apps:
+            for app in installed_apps:
+                display_name = app['display_name']
+                app_key = app['app_key']
+                aumid = app['aumid']
+
+                # Store the app data for session creation
+                self._installed_uwp_apps[app_key] = {
+                    'display_name': display_name,
+                    'aumid': aumid,
+                    'install_location': app.get('install_location', ''),
+                }
+
+                self.uwp_combo.addItem(f"  {display_name}", app_key)
+        else:
+            # Fallback message if no apps detected
+            self.uwp_combo.addItem("  (No Store apps detected)", "__none__")
 
         layout.addWidget(self.uwp_combo)
 
@@ -485,6 +493,19 @@ class SessionDialog(QDialog):
         else:  # Unchecked
             self.icon_edit.setEnabled(True)
             self.icon_edit.setPlaceholderText("🌐 or emoji")
+
+    def _on_uwp_combo_changed(self, index: int):
+        """Handle UWP app combo selection - auto-populate icon field."""
+        if not hasattr(self, 'uwp_combo'):
+            return
+
+        selected_uwp = self.uwp_combo.currentData()
+
+        if selected_uwp and selected_uwp not in ("__separator__", "__none__", ""):
+            # Auto-check "Use app icon" and show the app key
+            self.use_app_icon_checkbox.setChecked(True)
+            self.icon_edit.setText(f"app:{selected_uwp}")
+            self.icon_edit.setEnabled(False)
 
     def _browse_workspace(self):
         """Browse for workspace/folder."""
@@ -898,8 +919,15 @@ class SessionDialog(QDialog):
         custom_aumid = self.uwp_aumid_edit.text().strip()
         custom_protocol = self.uwp_protocol_edit.text().strip()
 
-        if selected_uwp and selected_uwp != "__separator__":
-            # Known UWP app selected
+        if selected_uwp and selected_uwp not in ("__separator__", "__none__", ""):
+            # Get the AUMID from dynamically detected apps
+            app_data = getattr(self, '_installed_uwp_apps', {}).get(selected_uwp, {})
+            detected_aumid = app_data.get('aumid', '')
+
+            # Also check hardcoded registry for protocol info
+            registry_data = UWP_APP_REGISTRY.get(selected_uwp, {})
+            protocol = registry_data.get('protocol')
+
             if self.editing and self.session:
                 # Update existing session
                 self.session.name = name
@@ -907,14 +935,18 @@ class SessionDialog(QDialog):
                 self.session.tab_id = tab_id
                 self.session.launch_config.app_type = "uwp"
                 self.session.launch_config.app_name = selected_uwp
-                # Clear any custom AUMID/protocol - will use registry
-                self.session.launch_config.parameters.pop('aumid', None)
-                self.session.launch_config.parameters.pop('protocol', None)
+                # Use detected AUMID
+                if detected_aumid:
+                    self.session.launch_config.parameters['aumid'] = detected_aumid
+                if protocol:
+                    self.session.launch_config.parameters['protocol'] = protocol
                 return self.session
             else:
                 return create_uwp_session(
                     name=name,
                     app_name=selected_uwp,
+                    aumid=detected_aumid if detected_aumid else None,
+                    protocol=protocol,
                     icon=icon,
                     tab_id=tab_id
                 )

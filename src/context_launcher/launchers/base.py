@@ -132,8 +132,10 @@ class BaseLauncher(ABC):
         return False
 
     def _log_launch(self, message: str):
-        """Log launch information."""
-        self.logger.info(message)
+        """Log launch information (only in debug mode)."""
+        from ..core.debug_config import DebugConfig
+        if DebugConfig.is_debug_mode():
+            self.logger.info(message)
 
     def _log_error(self, message: str, exc: Optional[Exception] = None):
         """Log error information."""

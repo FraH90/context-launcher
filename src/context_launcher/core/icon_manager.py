@@ -13,8 +13,15 @@ from PySide6.QtCore import QSize, Qt, QByteArray, QBuffer, QIODevice
 from PySide6.QtWidgets import QFileIconProvider
 
 from ..utils.logger import get_logger
+from .debug_config import DebugConfig
 
 logger = get_logger(__name__)
+
+
+def _debug_print(msg: str):
+    """Print debug message only if debug mode is enabled."""
+    if DebugConfig.is_debug_mode():
+        print(msg)
 
 # Cache directory - platform specific
 if sys.platform == "darwin":
@@ -358,7 +365,7 @@ class IconManager:
         """Get icon for a UWP/Windows Store app.
 
         Args:
-            app_name: Name of the UWP app (key in UWP_APP_REGISTRY)
+            app_name: Name of the UWP app (key from dynamic detection or UWP_APP_REGISTRY)
 
         Returns:
             QIcon if found, None otherwise
@@ -367,64 +374,72 @@ class IconManager:
             return None
 
         try:
-            # Import UWP registry
-            from ..launchers.apps.uwp import UWP_APP_REGISTRY
+            # Import UWP functions
+            from ..launchers.apps.uwp import UWP_APP_REGISTRY, get_installed_uwp_apps_with_details
 
             app_key = app_name.lower()
-            if app_key not in UWP_APP_REGISTRY:
-                print(f"[UWP DEBUG] {app_name} not in UWP_APP_REGISTRY")
+            install_location = None
+
+            # First, try to find in dynamically detected apps (has install_location cached)
+            installed_apps = get_installed_uwp_apps_with_details()
+            for app in installed_apps:
+                if app['app_key'] == app_key:
+                    install_loc = app.get('install_location', '')
+                    if install_loc:
+                        install_location = Path(install_loc)
+                        _debug_print(f"[UWP DEBUG] {app_name} found in dynamic cache: {install_location}")
+                    break
+
+            # If not found in dynamic cache, try the hardcoded registry
+            if not install_location:
+                if app_key in UWP_APP_REGISTRY:
+                    app_info = UWP_APP_REGISTRY[app_key]
+                    aumid = app_info.get('aumid', '')
+                    if aumid:
+                        # Extract package family name from AUMID
+                        pkg_family = aumid.split('!')[0]
+                        _debug_print(f"[UWP DEBUG] {app_name} -> pkg_family: {pkg_family}")
+
+                        # Use PowerShell to get the package install location
+                        ps_command = (
+                            "$pkg = Get-AppxPackage | Where-Object { $_.PackageFamilyName -eq '"
+                            + pkg_family
+                            + "' } | Select-Object -First 1; if ($pkg) { $pkg.InstallLocation }"
+                        )
+
+                        result = subprocess.run(
+                            ['powershell', '-NoProfile', '-Command', ps_command],
+                            capture_output=True,
+                            text=True,
+                            timeout=10,
+                            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                        )
+
+                        if result.returncode == 0 and result.stdout.strip():
+                            install_location = Path(result.stdout.strip())
+
+            if not install_location:
+                _debug_print(f"[UWP DEBUG] {app_name} not found in dynamic cache or registry")
                 return None
-
-            app_info = UWP_APP_REGISTRY[app_key]
-            aumid = app_info.get('aumid', '')
-            if not aumid:
-                print(f"[UWP DEBUG] {app_name} has no AUMID")
-                return None
-
-            # Extract package family name from AUMID (format: PackageFamilyName!AppId)
-            pkg_family = aumid.split('!')[0]
-            print(f"[UWP DEBUG] {app_name} -> pkg_family: {pkg_family}")
-
-            # Use PowerShell to get the package install location
-            ps_command = (
-                "$pkg = Get-AppxPackage | Where-Object { $_.PackageFamilyName -eq '"
-                + pkg_family
-                + "' } | Select-Object -First 1; if ($pkg) { $pkg.InstallLocation }"
-            )
-
-            result = subprocess.run(
-                ['powershell', '-NoProfile', '-Command', ps_command],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
-            )
-
-            print(f"[UWP DEBUG] PowerShell returncode: {result.returncode}")
-            print(f"[UWP DEBUG] PowerShell stdout: '{result.stdout.strip()}'")
-            print(f"[UWP DEBUG] PowerShell stderr: '{result.stderr.strip()}'")
-
-            if result.returncode != 0 or not result.stdout.strip():
-                logger.debug(f"Could not find UWP package for {app_name}")
-                return None
-
-            install_location = Path(result.stdout.strip())
-            print(f"[UWP DEBUG] install_location: {install_location}")
-            print(f"[UWP DEBUG] install_location.exists(): {install_location.exists()}")
+            _debug_print(f"[UWP DEBUG] install_location: {install_location}")
+            _debug_print(f"[UWP DEBUG] install_location.exists(): {install_location.exists()}")
             if not install_location.exists():
                 return None
 
             # Parse AppxManifest.xml to find logo paths
             manifest_path = install_location / "AppxManifest.xml"
-            print(f"[UWP DEBUG] manifest_path: {manifest_path}")
-            print(f"[UWP DEBUG] manifest_path.exists(): {manifest_path.exists()}")
+            _debug_print(f"[UWP DEBUG] manifest_path: {manifest_path}")
+            _debug_print(f"[UWP DEBUG] manifest_path.exists(): {manifest_path.exists()}")
             if not manifest_path.exists():
                 return None
 
-            # Search Assets folder for AppList icons with targetsize
+            # Search for icon folder (Assets or images, depending on app)
             assets_dir = install_location / "Assets"
             if not assets_dir.exists():
-                print(f"[UWP DEBUG] Assets folder not found")
+                # Some apps (like Electron-based) use 'images' folder
+                assets_dir = install_location / "images"
+            if not assets_dir.exists():
+                _debug_print(f"[UWP DEBUG] Neither Assets nor images folder found")
                 return None
 
             # Find the best icon using UWP naming conventions
@@ -462,12 +477,12 @@ class IconManager:
                     best_icon = png_file
 
             if best_icon:
-                print(f"[UWP DEBUG] Best icon: {best_icon.name} (priority={best_size})")
+                _debug_print(f"[UWP DEBUG] Best icon: {best_icon.name} (priority={best_size})")
                 pixmap = QPixmap(str(best_icon))
                 if not pixmap.isNull():
                     return QIcon(pixmap)
 
-            print(f"[UWP DEBUG] No AppList/targetsize icon found for {app_name}")
+            _debug_print(f"[UWP DEBUG] No AppList/targetsize icon found for {app_name}")
             return None
 
         except ImportError:
