@@ -187,7 +187,29 @@ class VSCodeLauncher(BaseLauncher):
         Returns:
             List of command arguments
         """
-        args = [self.get_executable_path()]
+        exe_path = self.get_executable_path()
+
+        # On macOS, if we have a .app bundle, use 'open' command
+        if sys.platform == 'darwin' and exe_path.endswith('.app'):
+            args = ['open', '-a', exe_path]
+            # Collect VS Code arguments
+            vscode_args = []
+            if self.new_window:
+                vscode_args.append('--new-window')
+            elif self.add_folder:
+                vscode_args.append('--add')
+            if self.workspace:
+                vscode_args.append(self.workspace)
+            elif self.folder:
+                vscode_args.append(self.folder)
+            # Pass args to VS Code via --args
+            if vscode_args:
+                args.append('--args')
+                args.extend(vscode_args)
+            return args
+
+        # Direct executable (code CLI, Windows, Linux)
+        args = [exe_path]
 
         # Add window options
         if self.new_window:

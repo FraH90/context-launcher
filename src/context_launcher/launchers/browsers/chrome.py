@@ -100,7 +100,29 @@ class ChromeLauncher(BrowserLauncher):
         Returns:
             List of command arguments
         """
-        args = [self.get_executable_path()]
+        exe_path = self.get_executable_path()
+
+        # On macOS, if we have a .app bundle, use 'open' command
+        if sys.platform == 'darwin' and exe_path.endswith('.app'):
+            args = ['open', '-a', exe_path]
+            # Collect browser arguments
+            browser_args = []
+            if self.profile:
+                browser_args.extend(self._get_profile_args())
+            browser_args.extend([
+                "--disable-blink-features=AutomationControlled",
+                "--disable-features=OptimizationGuideModelDownloading,OptimizationHintsFetching,OptimizationTargetPrediction,OptimizationHints"
+            ])
+            browser_args.extend(self._get_new_window_args())
+            urls = [tab['url'] for tab in self.tabs if tab.get('type') == 'url']
+            browser_args.extend(urls)
+            if browser_args:
+                args.append('--args')
+                args.extend(browser_args)
+            return args
+
+        # Direct executable (Windows, Linux)
+        args = [exe_path]
 
         # Add profile if specified
         if self.profile:

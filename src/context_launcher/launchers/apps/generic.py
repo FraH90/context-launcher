@@ -115,12 +115,24 @@ class GenericAppLauncher(BaseLauncher):
 
     def _build_launch_command(self) -> tuple:
         """Build the launch command.
-        
+
         Returns:
             Tuple of (command_args, method) or (None, None) if not found
         """
         # If explicit path provided, use it
         if self.executable_path:
+            # On macOS, .app bundles must be opened via 'open' command
+            if sys.platform == 'darwin' and self.executable_path.endswith('.app'):
+                args = ['open', '-a', self.executable_path]
+                if self.arguments:
+                    args.append('--args')
+                    if isinstance(self.arguments, str):
+                        args.extend(self.arguments.split())
+                    else:
+                        args.extend(self.arguments)
+                return (args, "open")
+
+            # Direct executable (Windows, Linux, or non-.app on macOS)
             args = [self.executable_path]
             if self.arguments:
                 if isinstance(self.arguments, str):
