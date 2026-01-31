@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from ..core.config import ConfigManager
+from ..core.icon_manager import get_icon_manager
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -120,6 +121,23 @@ class SettingsDialog(QDialog):
         
         data_layout.addLayout(reset_layout)
 
+        # Clear icon cache button
+        cache_layout = QHBoxLayout()
+        cache_label = QLabel("Clear cached application icons:")
+        cache_label.setWordWrap(True)
+        cache_layout.addWidget(cache_label)
+        cache_layout.addStretch()
+
+        self.clear_cache_btn = QPushButton("🗑 Clear Icon Cache")
+        self.clear_cache_btn.setToolTip(
+            "Clear all cached application icons.\n"
+            "Icons will be re-fetched the next time the app loads."
+        )
+        self.clear_cache_btn.clicked.connect(self._on_clear_icon_cache)
+        cache_layout.addWidget(self.clear_cache_btn)
+
+        data_layout.addLayout(cache_layout)
+
         # Show data location
         data_path_label = QLabel(f"Data location: {self.config_manager.data_dir}")
         data_path_label.setStyleSheet("color: gray; font-size: 10px;")
@@ -193,6 +211,39 @@ class SettingsDialog(QDialog):
         self.config_manager.save_user_preferences(self.prefs)
 
         self.accept()
+
+    def _on_clear_icon_cache(self):
+        """Handle clear icon cache button click."""
+        reply = QMessageBox.question(
+            self,
+            "Clear Icon Cache",
+            "This will clear all cached application icons.\n\n"
+            "Icons will be re-fetched when you restart the app.\n\n"
+            "Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            icon_manager = get_icon_manager()
+            icon_manager.clear_cache(include_disk=True)
+
+            QMessageBox.information(
+                self,
+                "Cache Cleared",
+                "Icon cache cleared successfully!\n\n"
+                "Restart the app to see the refreshed icons."
+            )
+        except Exception as e:
+            logger.error(f"Failed to clear icon cache: {e}", exc_info=True)
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"Failed to clear icon cache:\n{str(e)}"
+            )
 
     def _on_reset_to_defaults(self):
         """Handle reset to defaults button click."""

@@ -370,12 +370,12 @@ class ConfigManager:
 
     def _get_platform_template_name(self) -> str:
         """Get the platform-specific template suffix.
-        
+
         Returns:
-            Platform suffix (e.g., 'macos', 'windows')
+            Platform suffix (e.g., 'darwin', 'windows')
         """
         if sys.platform == 'darwin':
-            return 'macos'
+            return 'darwin'
         elif sys.platform == 'win32':
             return 'windows'
         else:
