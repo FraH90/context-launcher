@@ -31,8 +31,17 @@ from .tree_widget import SmartTreeWidget
 class SkipPlusTabBar(QTabBar):
     """Custom tab bar that skips the '+' tab when scrolling with mouse wheel."""
 
+    # Scroll threshold - accumulate delta until this value to change tabs
+    # macOS touchpad sends pixel-based deltas (small values, many events)
+    # Mouse wheel sends line-based deltas (larger values like 120 per notch)
+    SCROLL_THRESHOLD = 80  # Works well for both touchpad and mouse
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._accumulated_delta = 0
+
     def wheelEvent(self, event):
-        """Handle mouse wheel to skip the '+' tab."""
+        """Handle mouse wheel to skip the '+' tab with scroll dampening."""
         # Get number of real tabs (excluding the + tab at the end)
         num_real_tabs = self.count() - 1  # Subtract 1 for the + tab
 
@@ -40,12 +49,18 @@ class SkipPlusTabBar(QTabBar):
             event.accept()
             return
 
+        # Accumulate scroll delta
+        delta = event.angleDelta().y()
+        self._accumulated_delta += delta
+
+        # Only change tab when accumulated delta exceeds threshold
+        if abs(self._accumulated_delta) < self.SCROLL_THRESHOLD:
+            event.accept()
+            return
+
         current = self.currentIndex()
 
-        # Determine scroll direction
-        delta = event.angleDelta().y()
-
-        if delta > 0:
+        if self._accumulated_delta > 0:
             # Scroll up = go to previous tab
             if current > 0:
                 new_index = current - 1
@@ -59,6 +74,8 @@ class SkipPlusTabBar(QTabBar):
                 new_index = 0  # Wrap to first tab
 
         self.setCurrentIndex(new_index)
+        # Reset accumulated delta after changing tab
+        self._accumulated_delta = 0
         event.accept()
 
 
